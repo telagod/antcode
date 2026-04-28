@@ -1,0 +1,50 @@
+goal:
+  id: goal_001
+  title: "Add a CLI command"
+  description: "Add `antcode show-genomes` command without changing unrelated modules."
+
+experience_key:
+  goal_pattern: add_cli_command
+  module_region: cli
+  error_pattern: missing_command_route
+  context_shape:
+    - existing_command_examples
+    - cli_tests
+  risk_level: low_to_medium
+
+allowed_files:
+  - src/cli.ts
+  - tests/cli.test.ts
+
+forbidden_files:
+  - package-lock.json
+  - docs/**
+
+read_only_files:
+  - src/types.ts
+  - src/sampler.ts
+
+commands_allowed:
+  - npm test -- cli
+  - npm run typecheck
+
+commands_forbidden:
+  - rm -rf
+  - git push
+  - npm publish
+
+success_criteria:
+  - CLI accepts `show-genomes`
+  - targeted test asserts the command output
+  - no weakened assertions
+  - no forbidden files changed
+
+max_diff_lines: 180
+
+required_output:
+  - patch
+  - files_changed
+  - commands_run
+  - assumptions
+  - risks
+  - blocked_reason

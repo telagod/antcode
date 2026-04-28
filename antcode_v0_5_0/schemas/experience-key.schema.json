@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExperienceKey",
+  "type": "object",
+  "required": [
+    "goal_pattern",
+    "module_region",
+    "context_shape",
+    "risk_level"
+  ],
+  "properties": {
+    "goal_pattern": {
+      "type": "string"
+    },
+    "module_region": {
+      "type": "string"
+    },
+    "error_pattern": {
+      "type": "string"
+    },
+    "context_shape": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_level": {
+      "enum": [
+        "low",
+        "low_to_medium",
+        "medium",
+        "high"
+      ]
+    }
+  }
+}

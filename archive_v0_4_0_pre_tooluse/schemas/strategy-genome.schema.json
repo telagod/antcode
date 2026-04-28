@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StrategyGenome",
+  "type": "object",
+  "required": [
+    "id",
+    "parent_id",
+    "generation",
+    "status",
+    "applies_to",
+    "context_strategy",
+    "action_strategy",
+    "validation_strategy",
+    "boundary_strategy",
+    "reward_profile",
+    "mutation_policy"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "active",
+        "candidate",
+        "suppressed",
+        "quarantined"
+      ]
+    },
+    "applies_to": {
+      "type": "object"
+    },
+    "context_strategy": {
+      "type": "object"
+    },
+    "action_strategy": {
+      "type": "object"
+    },
+    "validation_strategy": {
+      "type": "object"
+    },
+    "boundary_strategy": {
+      "type": "object"
+    },
+    "reward_profile": {
+      "type": "object"
+    },
+    "mutation_policy": {
+      "type": "array"
+    }
+  }
+}

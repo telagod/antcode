@@ -1,0 +1,22 @@
+flowchart TD
+  A[Goal / Work Capsule] --> B[ExperienceKey]
+  B --> C[Policy Sampler]
+  C --> D[StrategyGenome]
+  D --> E[Worker Attempt]
+  E --> F[RewardBundle]
+  F --> G[FailureMode Classifier]
+  G --> H[Positive Pheromone Update]
+  G --> I[Negative Pheromone Update]
+  G --> J{Mutation Threshold?}
+  J -- no --> C
+  J -- yes --> K[MutationEvent]
+  K --> L[Child StrategyGenome]
+  L --> M[Parent-child Tournament]
+  M --> N{Decision}
+  N -- promote --> O[Child Active]
+  N -- suppress --> P[Child Suppressed]
+  N -- quarantine --> Q[Child Quarantined]
+  N -- keep both --> C
+  O --> C
+  P --> C
+  Q --> R[Audit Only]

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Attempt",
+  "type": "object",
+  "required": [
+    "id",
+    "timestamp",
+    "experience_key",
+    "strategy_genome_id",
+    "worker",
+    "result",
+    "files_changed",
+    "diff_lines",
+    "tests_added",
+    "commands_run",
+    "boundary_violations",
+    "notes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "experience_key": {
+      "type": "object"
+    },
+    "strategy_genome_id": {
+      "type": "string"
+    },
+    "worker": {
+      "enum": [
+        "mock",
+        "codex",
+        "other"
+      ]
+    },
+    "result": {
+      "enum": [
+        "success",
+        "failure",
+        "blocked"
+      ]
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diff_lines": {
+      "type": "integer"
+    },
+    "tests_added": {
+      "type": "integer"
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "boundary_violations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

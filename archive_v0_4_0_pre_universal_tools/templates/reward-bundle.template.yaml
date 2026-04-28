@@ -1,0 +1,18 @@
+id: reward_attempt_001
+attempt_id: attempt_001
+strategy_genome_id: scout_then_narrow_patch_v1
+experience_key_hash: add_cli_command:cli:missing_command_route:existing_command_examples+cli_tests:low_to_medium
+reward: 0.82
+semantic_confidence:
+  score: 0.87
+  evidence:
+    - changed behavior linked to goal
+    - target test covers intended behavior
+    - no weakened assertions
+    - no hidden config bypass
+cost:
+  diff_lines: 132
+  files_changed: 2
+  human_intervention: 0
+guard_flags: []
+failure_mode: none

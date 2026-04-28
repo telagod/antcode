@@ -1,0 +1,21 @@
+{
+  "version": "0.3.2",
+  "mutation_threshold": {
+    "min_same_failure_count": 2,
+    "min_avg_semantic_confidence": 0.35,
+    "forbid_if_guard_flags": [
+      "weakened_assertion",
+      "hidden_config_bypass"
+    ]
+  },
+  "promotion_rule": {
+    "min_samples": 3,
+    "semantic_success_improvement": 0.15,
+    "max_diff_cost_ratio": 1.2,
+    "boundary_violation": "no_increase"
+  },
+  "evaporation": {
+    "positive": 0.05,
+    "negative": 0.08
+  }
+}

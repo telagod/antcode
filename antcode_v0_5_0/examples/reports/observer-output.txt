@@ -1,0 +1,21 @@
+AntCode v0.3.2 Observer CLI Example
+
+ExperienceKey: add_cli_command:cli:missing_command_route:existing_command_examples+cli_tests:low_to_medium
+
+Genome                           Status      Positive  Negative  SamplingProb
+scout_then_narrow_patch_v1        active      0.62      0.05      0.51
+scout_then_test_first_v2          candidate   0.48      0.02      0.39
+direct_broad_patch_v1             suppressed  0.21      0.41      0.10
+
+Recent Mutations
+mut_0001  scout_then_narrow_patch_v1 -> scout_then_test_first_v2
+trigger: missing_test
+hypothesis: failures came from patching before locking behavior with tests
+status: candidate
+
+Health
+sample_count: 12
+transfer_success_rate: 0.58
+strategy_convergence: 0.71
+diagnosis: usable_but_noisy
+action: keep, watch_for_split

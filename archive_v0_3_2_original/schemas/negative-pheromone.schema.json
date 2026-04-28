@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NegativePheromone",
+  "type": "object",
+  "required": [
+    "experience_key_hash",
+    "strategy_genome_id",
+    "reason",
+    "penalty",
+    "confidence",
+    "decay",
+    "evidence_attempts",
+    "updated_at"
+  ],
+  "properties": {
+    "experience_key_hash": {
+      "type": "string"
+    },
+    "strategy_genome_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "penalty": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "decay": {
+      "enum": [
+        "fast",
+        "medium",
+        "slow"
+      ]
+    },
+    "evidence_attempts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "updated_at": {
+      "type": "string"
+    }
+  }
+}

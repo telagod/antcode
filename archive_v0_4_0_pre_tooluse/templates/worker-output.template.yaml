@@ -1,0 +1,18 @@
+attempt_id: attempt_001
+strategy_genome_id: scout_then_narrow_patch_v1
+result: success # success | failure | blocked
+files_changed:
+  - src/cli.ts
+  - tests/cli.test.ts
+diff_lines: 132
+tests_added: 1
+commands_run:
+  - npm test -- cli
+boundary_violations: []
+assumptions:
+  - Existing CLI command pattern should be reused.
+risks:
+  - CLI output snapshot may be brittle.
+blocked_reason: null
+notes:
+  - Added targeted CLI behavior test.

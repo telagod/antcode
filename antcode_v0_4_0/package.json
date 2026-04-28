@@ -1,0 +1,22 @@
+{
+  "name": "antcode-v0-4-0",
+  "version": "0.4.0",
+  "description": "AntCode v0.4.0: Self-evolving code agent with real LLM worker, adaptive mutation, and cost-aware evolution",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "demo": "tsx src/cli.ts run-experiment 8",
+    "demo:real": "tsx src/cli.ts run-experiment 6 --real",
+    "run-experiment": "tsx src/cli.ts run-experiment",
+    "show:policy": "tsx src/cli.ts show-policy",
+    "show:genomes": "tsx src/cli.ts show-genomes",
+    "show:mutations": "tsx src/cli.ts show-mutations",
+    "show:health": "tsx src/cli.ts show-health",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

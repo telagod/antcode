@@ -1,0 +1,23 @@
+id: mut_0001
+timestamp: "2026-04-27T00:00:00.000Z"
+parent_strategy: scout_then_narrow_patch_v1
+child_strategy: scout_then_test_first_v2
+triggered_by:
+  experience_key_hash: add_cli_command:cli:missing_command_route:existing_command_examples+cli_tests:low_to_medium
+  failure_mode: missing_test
+  attempts:
+    - attempt_0003
+    - attempt_0007
+mutation:
+  type: validation_order_change
+  changed:
+    validation_strategy.required:
+      from:
+        - targeted_test
+        - typecheck
+      to:
+        - write_or_update_targeted_test
+        - run_targeted_test
+        - typecheck
+hypothesis: "CLI command addition failures often come from patching before locking expected behavior by tests."
+status: candidate

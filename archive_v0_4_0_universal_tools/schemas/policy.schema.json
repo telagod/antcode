@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PolicyConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "mutation_threshold",
+    "promotion_rule",
+    "evaporation"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "mutation_threshold": {
+      "type": "object"
+    },
+    "promotion_rule": {
+      "type": "object"
+    },
+    "evaporation": {
+      "type": "object"
+    }
+  }
+}

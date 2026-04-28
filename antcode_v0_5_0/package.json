@@ -1,0 +1,23 @@
+{
+  "name": "antcode-v0-5-0",
+  "version": "0.5.0",
+  "description": "AntCode v0.5.0: Autonomous self-evolving code agent with universal tools, multi-agent collaboration, and cost-aware evolution",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "demo": "tsx src/cli.ts run-experiment 8",
+    "demo:real": "tsx src/cli.ts run-experiment 12 --real",
+    "run-experiment": "tsx src/cli.ts run-experiment",
+    "report": "tsx src/cli.ts report",
+    "show:policy": "tsx src/cli.ts show-policy",
+    "show:genomes": "tsx src/cli.ts show-genomes",
+    "show:mutations": "tsx src/cli.ts show-mutations",
+    "show:health": "tsx src/cli.ts show-health",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

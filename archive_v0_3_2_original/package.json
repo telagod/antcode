@@ -1,0 +1,20 @@
+{
+  "name": "antcode-mvp-v0-3-2",
+  "version": "0.3.2",
+  "description": "AntCode MVP v0.3.2: Strategy Genome + Mutation mechanism experiment",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "demo": "tsx src/cli.ts run-experiment 8",
+    "run-experiment": "tsx src/cli.ts run-experiment",
+    "show:policy": "tsx src/cli.ts show-policy",
+    "show:genomes": "tsx src/cli.ts show-genomes",
+    "show:mutations": "tsx src/cli.ts show-mutations",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

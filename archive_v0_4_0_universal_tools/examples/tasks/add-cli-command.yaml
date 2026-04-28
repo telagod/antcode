@@ -1,0 +1,14 @@
+name: add_cli_command_show_genomes
+summary: Add a command that prints StrategyGenome table.
+experience_key:
+  goal_pattern: add_cli_command
+  module_region: cli
+  error_pattern: missing_command_route
+  context_shape:
+    - existing_command_examples
+    - cli_tests
+  risk_level: low_to_medium
+expected_failure_modes:
+  - missing_test
+  - context_underread
+  - patch_too_broad

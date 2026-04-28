@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MutationEvent",
+  "type": "object",
+  "required": [
+    "id",
+    "timestamp",
+    "parent_strategy",
+    "child_strategy",
+    "triggered_by",
+    "mutation",
+    "hypothesis",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "parent_strategy": {
+      "type": "string"
+    },
+    "child_strategy": {
+      "type": "string"
+    },
+    "triggered_by": {
+      "type": "object"
+    },
+    "mutation": {
+      "type": "object"
+    },
+    "hypothesis": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "promoted",
+        "suppressed",
+        "quarantined",
+        "keep_both"
+      ]
+    }
+  }
+}

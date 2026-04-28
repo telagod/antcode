@@ -1,0 +1,29 @@
+{"agentId":1,"timestamp":"2026-04-28T13:12:28.286Z","file":"src/index.ts","finding":"Inspected the package entrypoint and found the simulator module is already exported from src/index.t","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T13:12:46.560Z","file":"src/verify.test.ts","finding":"Exported the simulator module from src/index.ts so consumers can access mockAttempt from the package","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T13:12:46.560Z","file":"src/index.ts","finding":"Exported the simulator module from src/index.ts so consumers can access mockAttempt from the package","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T13:13:57.669Z","file":"src/mutation.ts","finding":"Fixed src/mutation.ts so mutateGenome derives the child strategy id from the updated generation inst","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T13:13:57.669Z","file":"src/mutation.test.ts","finding":"Fixed src/mutation.ts so mutateGenome derives the child strategy id from the updated generation inst","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T13:14:42.612Z","file":"src/storage.ts","finding":"Progress update: identified inconsistent error handling in src/storage.ts writeJson, which threw raw","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T13:14:42.612Z","file":"src/storage.test.ts","finding":"Progress update: identified inconsistent error handling in src/storage.ts writeJson, which threw raw","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T13:15:44.180Z","file":"src/storage.test.ts","finding":"Added a targeted storage regression test in src/storage.test.ts for readJsonl malformed trailing par","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T13:15:52.337Z","file":"src/mutation.test.ts","finding":"Fixed mutationOps context_underread change tracking so the mutation event records only newly added r","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T13:15:52.337Z","file":"src/mutationOps.ts","finding":"Fixed mutationOps context_underread change tracking so the mutation event records only newly added r","fixed":true}
+{"agentId":2,"timestamp":"2026-04-28T14:20:58.796Z","file":"src/verify.test.ts","finding":"loop interrupted at round 10: terminated","fixed":true}
+{"agentId":2,"timestamp":"2026-04-28T14:21:52.655Z","file":"src/verify.ts","finding":"Fixed src/verify.ts so captureBaseline wraps baseline file copy failures with actionable context inc","fixed":true}
+{"agentId":2,"timestamp":"2026-04-28T14:21:52.655Z","file":"src/verify.test.ts","finding":"Fixed src/verify.ts so captureBaseline wraps baseline file copy failures with actionable context inc","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:22:14.274Z","file":"src/verify.ts","finding":"Fixed verify.ts mergeFilesToProject so filesystem mkdir/write/readback failures are wrapped with act","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:22:14.274Z","file":"src/storage.test.ts","finding":"Fixed verify.ts mergeFilesToProject so filesystem mkdir/write/readback failures are wrapped with act","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:22:33.104Z","file":"src/verify.ts","finding":"Progress update: identified verify.ts mergeFilesToProject as a concrete filesystem error-handling is","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:22:33.104Z","file":"src/verify.test.ts","finding":"Progress update: identified verify.ts mergeFilesToProject as a concrete filesystem error-handling is","fixed":true}
+{"agentId":2,"timestamp":"2026-04-28T14:23:18.185Z","file":"src/verify.ts","finding":"Progress update: investigated src/verify.ts for remaining filesystem error handling in captureBaseli","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:23:18.723Z","file":"src/storage.test.ts","finding":"Progress update: identified src/verify.ts mergeToProject as a concrete filesystem error-handling iss","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:23:18.723Z","file":"src/verify.ts","finding":"Progress update: identified src/verify.ts mergeToProject as a concrete filesystem error-handling iss","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:23:26.980Z","file":"src/verify.ts","finding":"Hardened src/verify.ts mergeToProject so destination-file verification failures are also wrapped wit","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:24:33.084Z","file":"src/mutation.ts","finding":"Session checkpoint: investigated mutation/evolution area for one concrete issue; final verified summ","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:24:33.084Z","file":"src/crossover.ts","finding":"Session checkpoint: investigated mutation/evolution area for one concrete issue; final verified summ","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:24:33.084Z","file":"src/mutation.test.ts","finding":"Session checkpoint: investigated mutation/evolution area for one concrete issue; final verified summ","fixed":true}
+{"agentId":2,"timestamp":"2026-04-28T14:25:10.521Z","file":"src/verify.ts","finding":"Checkpoint: identified one concrete issue in src/verify.ts where captureBaseline wrapped typecheck e","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:25:24.922Z","file":"src/mutationOps.ts","finding":"Session checkpoint: identified and fixed one mutation/evolution issue in src/mutationOps.ts where ap","fixed":true}
+{"agentId":1,"timestamp":"2026-04-28T14:25:24.922Z","file":"src/mutation.test.ts","finding":"Session checkpoint: identified and fixed one mutation/evolution issue in src/mutationOps.ts where ap","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:25:42.870Z","file":"src/storage.test.ts","finding":"Fixed src/verify.ts mergeFilesToProject to wrap destination-directory creation, destination-file wri","fixed":true}
+{"agentId":0,"timestamp":"2026-04-28T14:25:42.870Z","file":"src/verify.ts","finding":"Fixed src/verify.ts mergeFilesToProject to wrap destination-directory creation, destination-file wri","fixed":true}

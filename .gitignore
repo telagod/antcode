@@ -1,0 +1,12 @@
+node_modules/
+dist/
+workbench/
+workbench_*/
+.antcode/attempts.jsonl
+.antcode/reward-bundles.jsonl
+.antcode/strategy-pheromones.jsonl
+.antcode/negative-pheromones.jsonl
+.antcode/experience-key-health.jsonl
+.antcode/mutation-events.jsonl
+.antcode/discoveries.jsonl
+*.output

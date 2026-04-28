@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RewardBundle",
+  "type": "object",
+  "required": [
+    "id",
+    "attempt_id",
+    "strategy_genome_id",
+    "experience_key_hash",
+    "reward",
+    "semantic_confidence",
+    "cost",
+    "guard_flags",
+    "failure_mode"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "strategy_genome_id": {
+      "type": "string"
+    },
+    "experience_key_hash": {
+      "type": "string"
+    },
+    "reward": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "semantic_confidence": {
+      "type": "object"
+    },
+    "cost": {
+      "type": "object"
+    },
+    "guard_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "failure_mode": {
+      "type": "string"
+    }
+  }
+}
