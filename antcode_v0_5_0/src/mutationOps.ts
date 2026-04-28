@@ -45,8 +45,7 @@ export function applyOneMutation(
     const bump = filesNeeded > 0 ? Math.max(3, filesNeeded + 2) : 3;
     child.context_strategy.max_files = Math.min(14, child.context_strategy.max_files + bump);
     const afterOrder = [...child.context_strategy.read_order];
-    const addedReadSteps = afterOrder.filter((step) => !beforeOrder.includes(step));
-    changed["context_strategy.read_order"] = { from: beforeOrder, to: addedReadSteps };
+    changed["context_strategy.read_order"] = { from: beforeOrder, to: afterOrder };
     changed["context_strategy.max_files"] = { from: beforeMax, to: child.context_strategy.max_files };
     return { type: "context_expansion", hypothesis: `Strategy under-read dependencies (needed ~${filesNeeded} files).` };
   } else if (failureMode === "boundary_blocked") {

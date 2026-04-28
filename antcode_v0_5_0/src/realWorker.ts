@@ -104,7 +104,8 @@ async function streamOnce(body: Record<string, unknown>, retries = 2): Promise<S
   throw new Error("streamOnce: all retries exhausted");
 }
 
-const MAX_TOOL_ROUNDS = 12;
+const MAX_TOOL_ROUNDS = 10;
+const MAX_READ_ONLY_ROUNDS = 4; // after this many read-only rounds, nudge LLM to act
 
 function executeTool(tc: ToolCall, ops: AllOps, cwd: string): { output: string; isDone: boolean; notes: string[]; testsAdded: number } {
   const tool = TOOL_MAP.get(tc.name);
@@ -196,6 +197,7 @@ async function runToolLoop(
   const totalUsage: Usage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
   const filesChanged = new Set<string>();
   const bashResults: string[] = [];
+  let readOnlyRounds = 0;
 
   const messages: Array<Record<string, unknown>> = [
     { role: "user", content: input },
@@ -235,6 +237,14 @@ async function runToolLoop(
 
     console.log(`      r${round}: ${result.toolCalls.map(tc => tc.name).join(", ")}`);
 
+    // track consecutive read-only rounds
+    const hasWriteAction = result.toolCalls.some(tc => tc.name === "write" || tc.name === "edit" || tc.name === "bash" || tc.name === "done");
+    if (!hasWriteAction) {
+      readOnlyRounds++;
+    } else {
+      readOnlyRounds = 0;
+    }
+
     for (const tc of result.toolCalls) {
       messages.push({ type: "function_call", call_id: tc.call_id, name: tc.name, arguments: tc.arguments });
     }
@@ -251,6 +261,12 @@ async function runToolLoop(
     }
 
     if (isDone) break;
+
+    // nudge LLM if it's been exploring too long without acting
+    if (readOnlyRounds >= MAX_READ_ONLY_ROUNDS) {
+      messages.push({ role: "user", content: "You've been reading files for several rounds. Please pick ONE concrete issue you found and fix it now using edit or write, then verify with bash and call done." });
+      readOnlyRounds = 0;
+    }
   }
 
   return { notes, testsAdded, totalUsage, filesChanged: [...filesChanged], bashResults };

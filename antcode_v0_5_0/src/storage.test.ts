@@ -2,10 +2,41 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readJsonl, StorageError, writeJson } from "./storage.ts";
+import test from "node:test";
+import { gatherInsights } from "./insights.ts";
+import { appendJsonl, readJsonl, StorageError, writeJson } from "./storage.ts";
 import { mergeFilesToProject, mergeToProject } from "./verify.ts";
 
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "storage-write-json-"));
+test("gatherInsights tolerates malformed or missing insight files", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gather-insights-"));
+  const antcodeDir = path.join(root, ".antcode");
+  fs.mkdirSync(antcodeDir, { recursive: true });
+
+  fs.writeFileSync(path.join(antcodeDir, "attempts.jsonl"), '{"id":"bad"\n', "utf8");
+
+  assert.deepEqual(gatherInsights(root, "goal-a"), []);
+
+  fs.rmSync(path.join(antcodeDir, "attempts.jsonl"));
+  appendJsonl(path.join(antcodeDir, "reward-bundles.jsonl"), {
+    attempt_id: "attempt-1",
+    reward: 0.9,
+    components: {
+      outcome: 0.9,
+      efficiency: 0.8,
+      safety: 1,
+      novelty: 0.5,
+      transfer: 0.5,
+    },
+    guard_flags: [],
+    semantic_confidence: { score: 0.8, evidence: [] },
+    failure_mode: "none",
+    duplicate_cluster_id: null,
+    experience_key_hash: "hash-1",
+  });
+
+  assert.deepEqual(gatherInsights(root, "goal-a"), []);
+});
+
 
 try {
   const blockedParent = path.join(tempRoot, "blocked-parent");
@@ -51,6 +82,19 @@ try {
       return true;
     },
   );
+
+  test("gatherInsights skips missing and malformed insight files", () => {
+    const root = fs.mkdtempSync(path.join(tempRoot, "insights-"));
+
+    assert.deepEqual(gatherInsights(root, "mutation and evolution"), []);
+
+    const antcodeDir = path.join(root, ".antcode");
+    fs.mkdirSync(antcodeDir, { recursive: true });
+    fs.writeFileSync(path.join(antcodeDir, "attempts.jsonl"), '{"id":"attempt_1","strategy_genome_id":"strategy_v1","timestamp":"2024-01-01T00:00:00.000Z","experience_key":{"goal_pattern":"mutation and evolution","module_region":"mutation and evolution","context_shape":[],"risk_level":"medium"},"result":"success","failure_mode":"none","semantic_confidence":{"score":0.9,"reasoning":["ok"]},"files_changed":["src/mutation.ts"],"diff_lines":10,"boundary_violations":[],"notes":["kept mutation scoped"]}\n{"broken":', "utf8");
+    fs.writeFileSync(path.join(antcodeDir, "reward-bundles.jsonl"), '{"attempt_id":"attempt_1","strategy_genome_id":"strategy_v1","reward":1,"failure_mode":"none","semantic_confidence":{"score":0.9,"reasoning":["ok"]},"guard_flags":[],"cost":{"files_changed":1,"diff_lines":10,"validation_minutes":1}}\n', "utf8");
+
+    assert.deepEqual(gatherInsights(root, "mutation and evolution"), []);
+  });
 
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });

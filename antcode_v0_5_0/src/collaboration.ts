@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,7 +45,11 @@ export function buildFocusPrompt(assignment: AgentAssignment): string {
 }
 
 // shared discovery board — agents write findings here
-const discoveryFile = path.resolve(PROJECT_SRC, "../.antcode/discoveries.jsonl");
+const defaultDiscoveryFile = path.resolve(PROJECT_SRC, "../.antcode/discoveries.jsonl");
+
+function getDiscoveryFile(): string {
+  return process.env.ANTCODE_DISCOVERY_FILE ?? defaultDiscoveryFile;
+}
 
 export interface Discovery {
   agentId: number;
@@ -55,15 +60,38 @@ export interface Discovery {
 }
 
 export function recordDiscovery(d: Discovery): void {
-  fs.mkdirSync(path.dirname(discoveryFile), { recursive: true });
-  fs.appendFileSync(discoveryFile, JSON.stringify(d) + "\n", "utf8");
+  const discoveryFile = getDiscoveryFile();
+  try {
+    fs.mkdirSync(path.dirname(discoveryFile), { recursive: true });
+    fs.appendFileSync(discoveryFile, JSON.stringify(d) + "\n", "utf8");
+  } catch {
+    // Best-effort shared state: append failures should not crash agent flows.
+  }
 }
 
 export function getRecentDiscoveries(limit = 10): Discovery[] {
+  const discoveryFile = getDiscoveryFile();
+  let content = "";
+
   try {
-    const lines = fs.readFileSync(discoveryFile, "utf8").trim().split("\n").filter(Boolean);
-    return lines.slice(-limit).map((l) => JSON.parse(l) as Discovery);
-  } catch { return []; }
+    content = fs.readFileSync(discoveryFile, "utf8");
+  } catch {
+    return [];
+  }
+
+  const discoveries: Discovery[] = [];
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    try {
+      discoveries.push(JSON.parse(trimmed) as Discovery);
+    } catch {
+      // Skip malformed JSONL rows and preserve valid discoveries.
+    }
+  }
+
+  return discoveries.slice(-limit);
 }
 
 export function formatDiscoveriesForPrompt(): string {
@@ -83,4 +111,19 @@ export function formatDiscoveriesForPrompt(): string {
     for (const d of unfixed.slice(-5)) lines.push(`- ${d.file}: ${d.finding}`);
   }
   return lines.join("\n");
+}
+
+export function withDiscoveryFileForTest<T>(run: (discoveryFile: string) => T): T {
+  const previous = process.env.ANTCODE_DISCOVERY_FILE;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "antcode-discovery-"));
+  const discoveryFile = path.join(tempDir, "discoveries.jsonl");
+
+  process.env.ANTCODE_DISCOVERY_FILE = discoveryFile;
+  try {
+    return run(discoveryFile);
+  } finally {
+    if (previous === undefined) delete process.env.ANTCODE_DISCOVERY_FILE;
+    else process.env.ANTCODE_DISCOVERY_FILE = previous;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 }

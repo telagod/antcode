@@ -80,6 +80,17 @@ export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
   }
 }
 
+export function tryReadJsonl<T>(file: string, fallback: T[]): ReadJsonResult<T[]> {
+  try {
+    return { value: readJsonl<T>(file), found: fs.existsSync(file) };
+  } catch (error) {
+    if (error instanceof StorageError && (error.code === "PARSE_FAILED" || error.code === "READ_FAILED")) {
+      return { value: fallback, found: true };
+    }
+    throw error;
+  }
+}
+
 export function readJson<T>(file: string, fallback: T): T {
   return tryReadJson(file, fallback).value;
 }

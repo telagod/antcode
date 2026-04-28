@@ -42,12 +42,32 @@ function makeGenome(): StrategyGenome {
   };
 }
 
-function makeAttempt(): Attempt {
-  return {
-    id: "attempt_1",
-    strategy_genome_id: "strategy_v1",
-    timestamp: new Date().toISOString(),
-    experience_key: {
+test("applyOneMutation records the full updated read order after adding a critical dependency scan", () => {
+  const child = makeGenome();
+  child.context_strategy.read_order = ["scout", "tests_first"];
+  const changed: MutationEvent["mutation"]["changed"] = {};
+
+  applyOneMutation(
+    child,
+    "context_underread",
+    changed,
+    [
+      {
+        ...makeAttempt(),
+        diff_lines: 12,
+        files_changed: ["src/a.ts", "src/b.ts"],
+        boundary_violations: [],
+      },
+    ],
+  );
+
+  assert.deepEqual(child.context_strategy.read_order, ["critical_dependency_scan", "scout", "tests_first"]);
+  assert.deepEqual(changed["context_strategy.read_order"], {
+    from: ["scout", "tests_first"],
+    to: ["critical_dependency_scan", "scout", "tests_first"],
+  });
+});
+
       goal_pattern: "storage",
       module_region: "mutation and evolution",
       context_shape: ["helper"],
