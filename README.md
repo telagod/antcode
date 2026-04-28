@@ -1,215 +1,256 @@
-# AntCode — Self-Evolving Code Agent
+<div align="center">
 
-AntCode is an autonomous code improvement system that uses evolutionary strategies to guide LLM agents in finding and fixing issues in codebases. It evolves its own strategies over time, learning which approaches work best for different types of tasks.
+# AntCode
 
-## How It Works
+### Safe self-evolving code agent for TypeScript repositories
 
+AntCode is an autonomous code-improvement system that learns which coding strategies work. It runs code agents in controlled workspaces, verifies their changes, scores the outcome, and evolves better strategies over time.
+
+[![Release](https://img.shields.io/github/v/release/telagod/antcode?style=flat-square)](https://github.com/telagod/antcode/releases)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Node](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Status](https://img.shields.io/badge/status-v0.7.0%20safe%20self--modification-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.7.0)
+
+</div>
+
+---
+
+## Why AntCode exists
+
+Most code agents are stateless: they try a prompt, produce a patch, and forget what happened.
+
+AntCode treats each attempt as training signal. A strategy that succeeds becomes more likely to run again; a strategy that fails is suppressed, mutated, or quarantined. The goal is not just to automate one patch — it is to make the agent better at choosing how to patch the next one.
+
+```text
+StrategyGenome
+  -> Agent Attempt
+  -> Verification
+  -> RewardBundle
+  -> Pheromone Update
+  -> Mutation / Crossover / Tournament
+  -> Better Sampling Policy
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Evolution Loop                      │
-│                                                      │
-│  1. Sample a Strategy Genome (weighted by fitness)   │
-│  2. Spawn LLM Agent with tools (read/edit/bash/...)  │
-│  3. Agent explores code, finds issue, fixes it       │
-│  4. Agent self-verifies (typecheck, tests)           │
-│  5. Calculate reward (semantic + cost + cache)        │
-│  6. Update pheromones (positive/negative)            │
-│  7. Maybe mutate strategy based on failure evidence   │
-│  8. Tournament: promote winners, suppress losers     │
-│  9. Merge successful changes back to source          │
-│  10. Repeat                                          │
-└─────────────────────────────────────────────────────┘
+
+## What is new in v0.7.0
+
+v0.7.0 is the first safe self-modification release. AntCode can now generate patch artifacts without immediately writing them back to the source tree.
+
+```text
+real run --no-auto-merge
+  -> .antcode/artifacts/<artifact_id>/
+  -> review-attempt
+  -> approve-attempt | reject-attempt
+  -> rollback-attempt when needed
 ```
 
-The system is inspired by ant colony optimization — strategies that succeed get stronger pheromone signals, strategies that fail get weaker. Failed strategies mutate to adapt, and child strategies compete with parents in tournaments.
+This is the important bridge between “an assistant edits the repo” and “AntCode can safely work on itself.”
 
-## Quick Start
+## Features
+
+- **Strategy genomes** — codified approaches for context reading, patch scope, validation, boundaries, reward, and mutation.
+- **Pheromone-guided sampling** — successful strategies gain signal; repeated failures leave negative pheromones.
+- **Real and mock workers** — run deterministic evolution simulations or real LLM tool loops.
+- **Universal tools** — `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, and `done`.
+- **Safe patch artifacts** — pending changes are stored with manifests, patch diffs, copied files, and verification logs.
+- **Review gates** — approve, reject, or roll back artifacts from the CLI.
+- **Cost-aware reward** — tracks semantic confidence, diff size, token cost, cache hits, and guard flags.
+- **Evolution mechanics** — mutation, crossover, tournament promotion, suppression, and quarantine.
+
+## Quick start
 
 ```bash
-cd antcode_v0_5_0
+git clone https://github.com/telagod/antcode.git
+cd antcode/antcode_v0_5_0
 npm install
-
-# Run with mock worker (no LLM needed, tests evolution mechanics)
-npm run demo
-
-# Run with real LLM
-export ANTCODE_LLM_BASE_URL="https://your-api.com/v1"
-export ANTCODE_LLM_API_KEY="sk-..."
-export ANTCODE_LLM_MODEL="gpt-4o"
-npm run demo:real
-
-# View results
+npm run typecheck
+npm test
 npm run report
 ```
 
-## CLI Commands
+Run a mock evolution loop:
 
 ```bash
-# Run experiment
-npx tsx src/cli.ts run-experiment [iterations] [--real]
-
-# View report (success rate, token usage, cost, strategy performance)
-npx tsx src/cli.ts report
-
-# Inspect state
-npx tsx src/cli.ts show-genomes     # strategy genomes and their status
-npx tsx src/cli.ts show-mutations   # mutation history
-npx tsx src/cli.ts show-policy      # sampling probabilities per goal
-npx tsx src/cli.ts show-health      # experience key health diagnostics
+npm run demo
 ```
 
-## Configuration
+Run a real LLM-backed loop:
 
-Environment variables:
+```bash
+export ANTCODE_LLM_BASE_URL="https://your-openai-compatible-endpoint/v1"
+export ANTCODE_LLM_API_KEY="sk-..."
+export ANTCODE_LLM_MODEL="gpt-5.4"
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTCODE_LLM_BASE_URL` | `https://sub.foxnio.com/v1` | OpenAI-compatible API base URL |
-| `ANTCODE_LLM_API_KEY` | — | API key |
-| `ANTCODE_LLM_MODEL` | `gpt-5.4` | Model ID |
-| `ANTCODE_CONCURRENCY` | `3` | Parallel agents per batch |
+npm run demo:real
+```
+
+## Safe self-modification workflow
+
+Use this when you want AntCode to propose changes to itself without automatically merging them:
+
+```bash
+npx tsx src/cli.ts run-experiment 1 --real --no-auto-merge
+npx tsx src/cli.ts review-attempt
+npx tsx src/cli.ts review-attempt <attempt_id_or_artifact_id>
+```
+
+If the artifact looks good:
+
+```bash
+npx tsx src/cli.ts approve-attempt <attempt_id_or_artifact_id>
+```
+
+If it is wrong:
+
+```bash
+npx tsx src/cli.ts reject-attempt <attempt_id_or_artifact_id>
+```
+
+If an approved artifact needs to be undone:
+
+```bash
+npx tsx src/cli.ts rollback-attempt <attempt_id_or_artifact_id>
+```
+
+Artifact layout:
+
+```text
+.antcode/artifacts/<artifact_id>/
+├── manifest.json
+├── patch.diff
+├── files/
+└── verification.log
+```
+
+## CLI reference
+
+| Command | Purpose |
+|---|---|
+| `run-experiment [n] [--real] [--no-auto-merge]` | Run mock or real evolution attempts |
+| `review-attempt [id]` | List artifacts or inspect one artifact |
+| `approve-attempt <id>` | Apply artifact files to the source tree after creating backups |
+| `reject-attempt <id>` | Mark a pending artifact as rejected |
+| `rollback-attempt <id>` | Restore files from an approved artifact backup |
+| `report` | Show attempts, success rate, cost, cache, and strategy performance |
+| `show-policy` | Show sampling probabilities by experience key |
+| `show-genomes` | Show strategy genome pool |
+| `show-mutations` | Show mutation history |
+| `show-health` | Show experience-key health diagnostics |
 
 ## Architecture
 
-```
-src/
-├── cli.ts              # CLI entry, experiment loop, report
-├── tools/
-│   ├── definitions.ts  # 8 universal tools (read/write/edit/bash/grep/find/ls/done)
-│   ├── operations.ts   # I/O abstraction layer (swap for remote/docker/ssh)
-│   └── index.ts
-├── realWorker.ts       # LLM agent: tool loop, streaming, cache optimization
-├── types.ts            # Core types (Genome, Attempt, Reward, Pheromone, etc.)
-├── mutation.ts         # Mutation decision logic
-├── mutationOps.ts      # Adaptive mutation operations
-├── crossover.ts        # Gene crossover between strategies
-├── tournament.ts       # Parent-child tournament
-├── sampler.ts          # Pheromone-weighted genome sampling
-├── reward.ts           # Reward calculation (semantic + cost + cache)
-├── health.ts           # Experience key health diagnostics
-├── collaboration.ts    # Multi-agent focus areas + shared discoveries
-├── insights.ts         # Cross-attempt knowledge sharing
-├── storage.ts          # JSONL file storage
-├── verify.ts           # Workbench slot management + patch verification
-├── simulator.ts        # Mock worker for testing evolution mechanics
-├── taskGen.ts          # Dynamic task generation via LLM
-└── tasks.ts            # Static task definitions
+```text
+Goal / Work Capsule
+        |
+        v
+ExperienceKey -----------------------------+
+        |                                  |
+        v                                  |
+Strategy Sampler <--- Pheromones <--- Reward Engine
+        |                                  ^
+        v                                  |
+Worker Attempt -> Verification -> Attempt + Patch Artifact
+        |                                  |
+        v                                  |
+Mutation / Crossover / Tournament --------+
 ```
 
-## Key Concepts
+Core modules:
 
-### Strategy Genome
+| Module | Responsibility |
+|---|---|
+| `src/cli.ts` | CLI entrypoint, experiment loop, reporting, artifact commands |
+| `src/realWorker.ts` | Real LLM tool loop and shared reconnaissance |
+| `src/tools/` | Universal tool definitions and local operations backend |
+| `src/verify.ts` | Workbench slots, patch artifacts, approval, rejection, rollback |
+| `src/reward.ts` | Reward calculation and failure-mode signal |
+| `src/mutation.ts` / `src/mutationOps.ts` | Evidence-driven strategy mutation |
+| `src/crossover.ts` | Strategy crossover between strong candidates |
+| `src/tournament.ts` | Parent-child promotion/suppression decisions |
+| `src/storage.ts` | JSON / JSONL storage primitives |
 
-A strategy genome defines how an LLM agent approaches a task:
+## Runtime state
 
-- **context_strategy** — what to read, how many files, whether to scout first
-- **action_strategy** — patch granularity, whether to prefer existing patterns
-- **validation_strategy** — what checks to run before declaring success
-- **boundary_strategy** — allowed file scope, max diff size
-- **reward_profile** — what to optimize for, what to penalize
-- **mutation_policy** — how to adapt when specific failure modes occur
+AntCode stores evolution state in `.antcode/`:
 
-### Pheromone System
-
-Positive pheromones strengthen successful strategies. Negative pheromones mark failure patterns to avoid. Both evaporate over time to prevent lock-in.
-
-### Adaptive Mutation
-
-When a strategy fails repeatedly with the same failure mode, it mutates. Mutations are evidence-driven — if a boundary was too tight, the new value is derived from the actual diff size, not a blind multiplier.
-
-### Tool Use Loop
-
-In real mode, the LLM agent runs a multi-round tool loop:
-
-```
-round 0: ls, find          (explore project structure)
-round 1: read, read, read  (understand relevant code)
-round 2: grep              (search for patterns)
-round 3: edit              (make targeted fix)
-round 4: bash              (run typecheck/tests)
-round 5: done              (report what was fixed)
+```text
+.antcode/
+├── policy.json
+├── strategy-genomes.jsonl
+├── strategy-pheromones.jsonl
+├── negative-pheromones.jsonl
+├── attempts.jsonl
+├── reward-bundles.jsonl
+├── mutation-events.jsonl
+├── experience-key-health.jsonl
+└── artifacts/
 ```
 
-The agent self-verifies its changes before completing. If verification fails, it can iterate.
+Treat this as product data. It explains why a strategy was selected, how it performed, and whether it should be promoted, suppressed, or mutated.
 
-### Operations Abstraction
+## Configuration
 
-All file/shell operations go through an `Operations` interface. The default implementation uses local `fs` and `execSync`, but you can swap it for:
+| Variable | Default | Description |
+|---|---:|---|
+| `ANTCODE_LLM_BASE_URL` | `https://sub.foxnio.com/v1` | OpenAI-compatible API base URL |
+| `ANTCODE_LLM_API_KEY` | — | Required for real LLM mode |
+| `ANTCODE_LLM_MODEL` | `gpt-5.4` | Model used by real worker and task generation |
+| `ANTCODE_CONCURRENCY` | `3` | Parallel real workers per batch |
 
-- SSH operations (remote machine)
-- Docker operations (containerized builds)
-- Custom backends (any language, any platform)
+No API key is required for mock evolution.
 
-## Performance
+## Performance snapshot
 
-### Latest benchmark (v0.5.0 optimized, 12 rounds)
+Latest recorded benchmark from the v0.5 optimization line:
 
-```
-Success rate:     91.7% (11/12 attempts succeeded and merged)
-Cache hit rate:   41.5%
-Cost per attempt: $0.24
-Avg reward:       0.656
-Avg diff size:    16 lines
-Genome convergence: 7 active / 4 candidate / 26 suppressed
-```
+| Metric | Value |
+|---|---:|
+| Success rate | 91.7% — 11 / 12 attempts |
+| Cache hit rate | 41.5% |
+| Estimated cost / attempt | $0.24 |
+| Average reward | 0.656 |
+| Average diff size | 16 lines |
+| Genome pool | 7 active / 4 candidate / 26 suppressed |
 
-### Evolution over time
+v0.7 focuses on safety and release hygiene rather than a new performance benchmark.
 
-| Phase | Rounds | Success | Cache | Cost/attempt |
-|-------|--------|---------|-------|-------------|
-| v0.4.0 pre-tooluse | 18 | 44% | 0% | $0.33 |
-| v0.4.0 tool use | 12 | 50% | 15% | $0.13 |
-| v0.5.0 initial | 30 | 57% | 48% | $0.16 |
-| v0.5.0 + exploration timeout | 12 | 83% | 43% | $0.22 |
-| v0.5.0 + shared recon | 12 | **92%** | 42% | $0.24 |
+## Roadmap
 
-### Top Strategies
+- **v0.7.x** — harden artifact status transitions, retention policy, and workspace configuration.
+- **v0.8** — local service mode with HTTP API and background queue.
+- **v0.9** — web console for runs, strategies, costs, patches, and failure modes.
+- **v1.0** — safe repository maintenance product with policy packs, approval gates, and audit logs.
 
-| Strategy | Success Rate | Avg Reward |
-|----------|-------------|------------|
-| refactor_big_bang_v4 | 100% (3/3) | 0.661 |
-| scout_then_narrow_v2 | 100% (2/2) | 0.714 |
-| refactor_big_bang_v6 | 100% (1/1) | 0.706 |
-| refactor_big_bang_v3 | 100% (1/1) | 0.680 |
-| test_first_minimal_v1 | 100% (1/1) | 0.678 |
+See [`antcode_v0_5_0/docs/11_productization_roadmap.md`](antcode_v0_5_0/docs/11_productization_roadmap.md).
 
-### Code Self-Improved By LLM
+## Release
 
-Over the course of evolution, the LLM autonomously found and fixed:
+- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.7.0>
+- Package artifact: [`antcode-0.7.0.tgz`](https://github.com/telagod/antcode/releases/download/v0.7.0/antcode-0.7.0.tgz)
 
-- `storage.ts` — structured StorageError, tryReadJson/tryReadJsonl fallbacks
-- `insights.ts` — safe JSONL reading, malformed file tolerance
-- `verify.ts` — mergeToProject error handling, duplicate function removal
-- `mutation.ts` — child strategy id derivation fix
-- `mutationOps.ts` — context_underread change tracking, import tightening
-- `crossover.ts` — JSON.parse clone → structuredClone
-- `collaboration.ts` — discovery JSONL validation
-- `taskGen.ts` — input validation, structured error handling
-- `index.ts` — missing module exports (crossover, simulator, etc.)
+## Security model
 
-## Version History
+AntCode is intentionally conservative about self-modification:
 
-| Version | What Changed |
-|---------|-------------|
-| v0.3.2 | Mock-only MVP: strategy genome + mutation + tournament |
-| v0.4.0 | Real LLM worker, concurrent execution, adaptive mutation, cost-aware reward |
-| v0.5.0 | Universal tools, multi-round agent loop, autonomous exploration, multi-agent collaboration, 91.7% success rate |
-| v0.7.0 | Safe self-modification release: patch artifacts, review gate, approve/reject/rollback |
+1. Real runs can be forced into `--no-auto-merge`.
+2. Patch artifacts must be reviewed before approval.
+3. Approval creates backups.
+4. Rollback restores from approval backups.
+5. Secrets must come from environment variables, never from source.
 
-## Project Structure
+## Repository layout
 
-```
+```text
 antcode/
 ├── README.md
-├── antcode_v0_5_0/          # Current package line, released as antcode@0.7.0
-│   ├── src/                 # Source code
-│   ├── .antcode/            # Evolution state (genomes, pheromones, policy)
-│   ├── docs/                # Design documents
-│   ├── schemas/             # JSON schemas
-│   └── templates/           # YAML templates
-└── archives/                # Previous versions
+├── antcode_v0_5_0/        # current package line, released as antcode@0.7.0
+│   ├── src/
+│   ├── docs/
+│   ├── schemas/
+│   ├── templates/
+│   └── tests/
+└── archives/              # historical versions
 ```
 
-## License
+## Status
 
-MIT
+AntCode is an experimental productization track. It is ready for local experimentation and GitHub release distribution, but should still be run with review gates before being trusted on important repositories.
