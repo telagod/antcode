@@ -64,7 +64,7 @@ export function mutateGenome(
     const result = applyOneMutation(child, mode, changed, attempts);
     types.push(result.type);
     hypotheses.push(result.hypothesis);
-    if (child.status === "quarantined") break;
+    if ((child.status as StrategyGenome["status"]) === "quarantined") break;
   }
 
   const type = types.length > 1 ? `compound[${types.join("+")}]` : (types[0] ?? "unknown_mutation");
@@ -92,7 +92,7 @@ export function mutateGenome(
     },
     mutation: { type, changed },
     hypothesis,
-    status: child.status === "quarantined" ? "quarantined" : "candidate",
+    status: (child.status as StrategyGenome["status"]) === "quarantined" ? "quarantined" : "candidate",
   };
 
   return { child, event };

@@ -1,4 +1,4 @@
-import { Attempt, ExperienceKey, StrategyGenome } from "./types";
+import { Attempt, ExperienceKey, PatchArtifactManifest, StrategyGenome } from "./types";
 import { RealTask } from "./tasks";
 import { createLocalOps, ALL_TOOLS, toolsToSchema, buildToolSnippets, ToolDef, AllOps } from "./tools";
 import { gatherInsights, formatInsightsForPrompt } from "./insights";
@@ -6,7 +6,7 @@ import { AgentAssignment, buildFocusPrompt, recordDiscovery, formatDiscoveriesFo
 import path from "node:path";
 
 const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
-const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "sk-1b3367b48959b1d2cfb75e6756fc69c34ca9f7328d8ff21721929853002de19f";
+const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
 const MODEL = process.env.ANTCODE_LLM_MODEL ?? "gpt-5.4";
 
 let attemptCounter = 0;
@@ -34,7 +34,7 @@ ${buildToolSnippets(ALL_TOOLS)}
 - Be specific in done notes: "Fixed readJson to catch JSON.parse errors" not "Hardened error handling"`;
 
 const TOOL_SCHEMAS = toolsToSchema(ALL_TOOLS);
-const TOOL_MAP = new Map(ALL_TOOLS.map((t) => [t.name, t]));
+const TOOL_MAP: Map<string, ToolDef> = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 
 // === Streaming + tool loop ===
 interface Usage { input_tokens: number; output_tokens: number; cached_tokens: number }
@@ -42,6 +42,10 @@ interface ToolCall { name: string; arguments: string; call_id: string }
 interface StreamResult { responseId: string; toolCalls: ToolCall[]; usage?: Usage; textOutput?: string }
 
 async function streamOnce(body: Record<string, unknown>, retries = 2): Promise<StreamResult> {
+  if (!API_KEY) {
+    throw new Error("ANTCODE_LLM_API_KEY is required for real LLM mode");
+  }
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(`${BASE_URL}/responses`, {
       method: "POST",
@@ -304,6 +308,7 @@ export function getSharedRecon(): string {
 export interface RealAttemptResult {
   attempt: Attempt;
   mergeFiles?: Record<string, string>;
+  artifact?: PatchArtifactManifest;
 }
 
 export async function realAttempt(
@@ -317,7 +322,7 @@ export async function realAttempt(
   attemptCounter += 1;
   const id = `attempt_${String(attemptCounter).padStart(4, "0")}`;
 
-  const { createSlot, resetSlot, cleanupSlot } = await import("./verify");
+  const { createSlot, resetSlot, cleanupSlot, createPatchArtifact } = await import("./verify");
   const slot = createSlot(slotId);
   resetSlot(slot);
 
@@ -360,6 +365,14 @@ export async function realAttempt(
     cleanupSlot(slot);
     return fallbackResult(id, key, genome, "no file changes");
   }
+
+  const artifact = createPatchArtifact(
+    slot,
+    id,
+    result.filesChanged,
+    result.notes,
+    result.bashResults,
+  );
 
   // collect merge files before cleanup
   let mergeFiles: Record<string, string> | undefined;
@@ -418,11 +431,12 @@ export async function realAttempt(
     boundary_violations: [],
     notes: [
       ...result.notes,
+      `artifact:${artifact.id}`,
       `tokens:in=${result.totalUsage.input_tokens},out=${result.totalUsage.output_tokens},cached=${result.totalUsage.cached_tokens}`,
     ],
   };
 
-  return { attempt, mergeFiles };
+  return { attempt, mergeFiles, artifact };
 }
 
 function fallbackResult(id: string, key: ExperienceKey, genome: StrategyGenome, reason: string): RealAttemptResult {

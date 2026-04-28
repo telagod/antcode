@@ -11,8 +11,8 @@ export interface SharedInsight {
 }
 
 export function gatherInsights(root: string, goalPattern: string, limit = 5): SharedInsight[] {
-  const attempts = tryReadJsonl<Attempt>(antcodePath(root, "attempts.jsonl"), []);
-  const rewards = tryReadJsonl<RewardBundle>(antcodePath(root, "reward-bundles.jsonl"), []);
+  const attempts = tryReadJsonl<Attempt>(antcodePath(root, "attempts.jsonl"), []).value;
+  const rewards = tryReadJsonl<RewardBundle>(antcodePath(root, "reward-bundles.jsonl"), []).value;
 
   const rewardMap = new Map(rewards.map((r) => [r.attempt_id, r]));
   const relevant = attempts

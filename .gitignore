@@ -10,3 +10,6 @@ workbench_*/
 .antcode/mutation-events.jsonl
 .antcode/discoveries.jsonl
 *.output
+.ace-tool/
+
+*.tgz

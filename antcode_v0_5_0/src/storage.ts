@@ -74,7 +74,7 @@ export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-export function tryReadJson<T extends JsonValue>(file: string, fallback: T): ReadJsonResult<T> {
+export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
   try {
     return { value: readJson(file, fallback), found: fs.existsSync(file) };
   } catch (error) {
@@ -90,7 +90,7 @@ export function tryReadJson<T extends JsonValue>(file: string, fallback: T): Rea
   }
 }
 
-export function readJson<T extends JsonValue>(file: string, fallback: T): T {
+export function readJson<T>(file: string, fallback: T): T {
   let content: string;
 
   try {
@@ -170,7 +170,7 @@ export function writeJson(file: string, value: unknown): void {
   }
 }
 
-export function tryReadJsonl<T extends JsonValue>(file: string, fallback: T[]): ReadJsonResult<T[]> {
+export function tryReadJsonl<T>(file: string, fallback: T[]): ReadJsonResult<T[]> {
   try {
     return { value: readJsonl<T>(file), found: fs.existsSync(file) };
   } catch (error) {
@@ -186,7 +186,7 @@ export function tryReadJsonl<T extends JsonValue>(file: string, fallback: T[]): 
   }
 }
 
-export function readJsonl<T extends JsonValue>(file: string): T[] {
+export function readJsonl<T>(file: string): T[] {
   let content: string;
 
   try {

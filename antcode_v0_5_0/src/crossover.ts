@@ -4,6 +4,10 @@ function cloneStrategyGenome(value: StrategyGenome): StrategyGenome {
   return structuredClone(value);
 }
 
+function clone<T>(value: T): T {
+  return structuredClone(value);
+}
+
 export interface CrossoverResult {
   child: StrategyGenome;
   parentA: string;

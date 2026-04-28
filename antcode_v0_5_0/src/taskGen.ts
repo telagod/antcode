@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const PROJECT_SRC = path.resolve(__dirname);
 
 const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
-const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "sk-1b3367b48959b1d2cfb75e6756fc69c34ca9f7328d8ff21721929853002de19f";
+const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
 const MODEL = process.env.ANTCODE_LLM_MODEL ?? "gpt-5.4";
 
 function scanSourceFiles(): Record<string, string> {
@@ -147,6 +147,11 @@ function toRealTask(raw: RawTask): RealTask {
 }
 
 export async function generateTasks(): Promise<RealTask[]> {
+  if (!API_KEY) {
+    console.log("  taskGen: ANTCODE_LLM_API_KEY not set; fallback to static tasks");
+    return [];
+  }
+
   const files = scanSourceFiles();
   const prompt = buildScanPrompt(files);
 

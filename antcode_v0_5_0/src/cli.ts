@@ -23,7 +23,14 @@ import { mockAttempt } from "./simulator";
 import { realAttempt, runSharedRecon } from "./realWorker";
 import { realTasks } from "./tasks";
 import { generateTasks } from "./taskGen";
-import { mergeFilesToProject } from "./verify";
+import {
+  approvePatchArtifact,
+  getPatchArtifact,
+  listPatchArtifacts,
+  mergeFilesToProject,
+  rejectPatchArtifact,
+  rollbackPatchArtifact,
+} from "./verify";
 import { evaluateExperienceKeyHealth } from "./health";
 import { hashExperienceKey, sampleGenome, samplingTable } from "./sampler";
 import { decideTournament } from "./tournament";
@@ -278,7 +285,7 @@ function logMutation(round: number, parentId: string, childId: string, failureMo
 let cliAttemptCounter = 0;
 let slotCounter = 0;
 
-async function runExperiment(iterations = 8, useReal = false): Promise<void> {
+async function runExperiment(iterations = 8, useReal = false, autoMerge = true): Promise<void> {
   const mode = useReal ? `real (LLM, concurrency=${CONCURRENCY})` : "mock";
   console.log(`starting ${iterations} iterations in ${mode} mode`);
   const policy = loadPolicy();
@@ -317,7 +324,7 @@ async function runExperiment(iterations = 8, useReal = false): Promise<void> {
       }
 
       const results = await Promise.allSettled(
-        jobs.map((j) => realAttempt(j.key, j.genome, j.task, j.slotId, true, j.assignment)),
+        jobs.map((j) => realAttempt(j.key, j.genome, j.task, j.slotId, autoMerge, j.assignment)),
       );
 
       for (let j = 0; j < results.length; j++) {
@@ -356,7 +363,8 @@ async function runExperiment(iterations = 8, useReal = false): Promise<void> {
         }
 
         const merged = attempt.notes.some((n) => n.includes("merged to project"));
-        console.log(`  [${i + j + 1}] ${job.genome.id} → ${attempt.result}${merged ? " [MERGED]" : ""} (${attempt.notes.join("; ").slice(0, 80)})`);
+        const artifact = attempt.notes.find((n) => n.startsWith("artifact:"))?.slice("artifact:".length);
+        console.log(`  [${i + j + 1}] ${job.genome.id} → ${attempt.result}${merged ? " [MERGED]" : ""}${artifact ? ` [ARTIFACT ${artifact}]` : ""} (${attempt.notes.join("; ").slice(0, 80)})`);
 
         const beforeCount = genomes.length;
         persistAttemptAndReward(attempt);
@@ -523,7 +531,7 @@ function showReport(): void {
   }
 
   console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║       AntCode v0.4.0 Experiment Report   ║");
+  console.log("║       AntCode v0.7.0 Experiment Report   ║");
   console.log("╚══════════════════════════════════════════╝\n");
 
   console.log("── Overview ──");
@@ -562,38 +570,138 @@ function showReport(): void {
   console.table(rows);
 }
 
-type CliCommand = "run-experiment" | "show-genomes" | "show-mutations" | "show-health" | "show-policy" | "report" | "help";
+function reviewAttempt(id?: string): void {
+  if (!id) {
+    const artifacts = listPatchArtifacts();
+    if (!artifacts.length) {
+      console.log("No patch artifacts yet.");
+      return;
+    }
+    console.table(artifacts.map((a) => ({
+      id: a.id,
+      attempt: a.attempt_id,
+      status: a.status,
+      files: a.files_changed.length,
+      diff: a.diff_lines,
+      created: a.created_at,
+    })));
+    return;
+  }
+
+  const artifact = getPatchArtifact(id);
+  if (!artifact) {
+    console.log(`No patch artifact found for ${id}`);
+    return;
+  }
+
+  console.log(`Patch Artifact: ${artifact.id}`);
+  console.log(`Attempt:        ${artifact.attempt_id}`);
+  console.log(`Status:         ${artifact.status}`);
+  console.log(`Created:        ${artifact.created_at}`);
+  console.log(`Files:          ${artifact.files_changed.join(", ") || "-"}`);
+  console.log(`Diff lines:     ${artifact.diff_lines}`);
+  console.log(`Patch:          ${artifact.patch_file}`);
+  console.log(`Files dir:      ${artifact.files_dir}`);
+  console.log(`Verify log:     ${artifact.verification_log}`);
+  if (artifact.notes.length) {
+    console.log("\nNotes:");
+    for (const note of artifact.notes.slice(0, 8)) console.log(`- ${note}`);
+  }
+}
+
+function approveAttempt(id?: string): void {
+  if (!id) {
+    console.log("Usage: approve-attempt <attempt_id|artifact_id>");
+    return;
+  }
+  const artifact = approvePatchArtifact(id);
+  console.log(`Approved and merged artifact ${artifact.id}`);
+}
+
+function rejectAttempt(id?: string): void {
+  if (!id) {
+    console.log("Usage: reject-attempt <attempt_id|artifact_id>");
+    return;
+  }
+  const artifact = rejectPatchArtifact(id);
+  console.log(`Rejected artifact ${artifact.id}`);
+}
+
+function rollbackAttempt(id?: string): void {
+  if (!id) {
+    console.log("Usage: rollback-attempt <attempt_id|artifact_id>");
+    return;
+  }
+  const artifact = rollbackPatchArtifact(id);
+  console.log(`Rolled back artifact ${artifact.id}`);
+}
+
+type CliCommand =
+  | "run-experiment"
+  | "show-genomes"
+  | "show-mutations"
+  | "show-health"
+  | "show-policy"
+  | "review-attempt"
+  | "approve-attempt"
+  | "reject-attempt"
+  | "rollback-attempt"
+  | "report"
+  | "help";
 
 interface ParsedCliArgs {
   cmd: CliCommand;
   useReal: boolean;
+  autoMerge: boolean;
   iterations: number;
+  targetId?: string;
 }
 
 function parseCliArgs(argv: string[]): ParsedCliArgs {
   const args = argv.slice(2);
   const rawCmd = args.find((a) => !a.startsWith("--")) ?? "help";
-  const cmd: CliCommand = rawCmd === "run-experiment" || rawCmd === "show-genomes" || rawCmd === "show-mutations" || rawCmd === "show-health" || rawCmd === "show-policy" || rawCmd === "report" ? rawCmd : "help";
+  const knownCommands: CliCommand[] = [
+    "run-experiment",
+    "show-genomes",
+    "show-mutations",
+    "show-health",
+    "show-policy",
+    "review-attempt",
+    "approve-attempt",
+    "reject-attempt",
+    "rollback-attempt",
+    "report",
+    "help",
+  ];
+  const cmd: CliCommand = knownCommands.includes(rawCmd as CliCommand) ? rawCmd as CliCommand : "help";
   const useReal = args.includes("--real");
+  const autoMerge = !args.includes("--no-auto-merge");
   const iterArg = args.find((a) => /^\d+$/.test(a));
+  const targetId = args.filter((a) => !a.startsWith("--")).find((a) => a !== rawCmd && !/^\d+$/.test(a));
   return {
     cmd,
     useReal,
+    autoMerge,
     iterations: Number(iterArg ?? 8),
+    targetId,
   };
 }
 
 async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "run-experiment") {
-    await runExperiment(parsed.iterations, parsed.useReal);
+    await runExperiment(parsed.iterations, parsed.useReal, parsed.autoMerge);
     return;
   }
   if (parsed.cmd === "show-genomes") return showGenomes();
   if (parsed.cmd === "show-mutations") return showMutations();
   if (parsed.cmd === "show-health") return showHealth();
   if (parsed.cmd === "show-policy") return showPolicy();
+  if (parsed.cmd === "review-attempt") return reviewAttempt(parsed.targetId);
+  if (parsed.cmd === "approve-attempt") return approveAttempt(parsed.targetId);
+  if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
+  if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.4.0\n\nCommands:\n  run-experiment [n] [--real]\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  console.log("AntCode v0.7.0\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);

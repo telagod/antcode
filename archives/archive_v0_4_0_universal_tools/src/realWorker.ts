@@ -5,7 +5,7 @@ import { gatherInsights, formatInsightsForPrompt } from "./insights";
 import path from "node:path";
 
 const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
-const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "sk-1b3367b48959b1d2cfb75e6756fc69c34ca9f7328d8ff21721929853002de19f";
+const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
 const MODEL = process.env.ANTCODE_LLM_MODEL ?? "gpt-5.4";
 
 let attemptCounter = 0;

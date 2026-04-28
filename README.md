@@ -142,7 +142,7 @@ All file/shell operations go through an `Operations` interface. The default impl
 
 ## Performance
 
-### Latest (v0.5.0 optimized, 12 rounds)
+### Latest benchmark (v0.5.0 optimized, 12 rounds)
 
 ```
 Success rate:     91.7% (11/12 attempts succeeded and merged)
@@ -194,13 +194,14 @@ Over the course of evolution, the LLM autonomously found and fixed:
 | v0.3.2 | Mock-only MVP: strategy genome + mutation + tournament |
 | v0.4.0 | Real LLM worker, concurrent execution, adaptive mutation, cost-aware reward |
 | v0.5.0 | Universal tools, multi-round agent loop, autonomous exploration, multi-agent collaboration, 91.7% success rate |
+| v0.7.0 | Safe self-modification release: patch artifacts, review gate, approve/reject/rollback |
 
 ## Project Structure
 
 ```
 antcode/
 ├── README.md
-├── antcode_v0_5_0/          # Current version
+├── antcode_v0_5_0/          # Current package line, released as antcode@0.7.0
 │   ├── src/                 # Source code
 │   ├── .antcode/            # Evolution state (genomes, pheromones, policy)
 │   ├── docs/                # Design documents

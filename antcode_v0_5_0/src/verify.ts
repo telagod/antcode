@@ -2,11 +2,18 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PatchArtifactManifest } from "./types";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const WORKBENCH_BASE = path.resolve(PROJECT_ROOT, "..");
+const ARTIFACTS_DIR = path.join(PROJECT_ROOT, ".antcode", "artifacts");
+
+interface ArtifactBackupEntry {
+  file: string;
+  existed: boolean;
+}
 
 export interface VerifyResult {
   patch_applied: boolean;
@@ -202,6 +209,10 @@ function countDiffLines(slot: string, files: string[]): number {
     const projectFile = path.join(PROJECT_ROOT, f);
     const slotFile = path.join(slot, f);
     try {
+      if (!pathExists(projectFile) && pathExists(slotFile)) {
+        total += fs.readFileSync(slotFile, "utf8").split("\n").length;
+        continue;
+      }
       const out = execSync(`git diff --no-index -- "${projectFile}" "${slotFile}" | tail -n +5`, {
         stdio: "pipe"
       }).toString();
@@ -220,6 +231,206 @@ function countDiffLines(slot: string, files: string[]): number {
     }
   }
   return total;
+}
+
+function diffForFile(slot: string, relPath: string): string {
+  const projectFile = path.join(PROJECT_ROOT, relPath);
+  const slotFile = path.join(slot, relPath);
+  if (!pathExists(projectFile) && pathExists(slotFile)) {
+    const content = fs.readFileSync(slotFile, "utf8");
+    const lines = content.split("\n").map((line) => `+${line}`).join("\n");
+    return [
+      `diff --git a/${relPath} b/${relPath}`,
+      "new file mode 100644",
+      "--- /dev/null",
+      `+++ b/${relPath}`,
+      "@@",
+      lines,
+    ].join("\n");
+  }
+  try {
+    return execSync(`git diff --no-index -- "${projectFile}" "${slotFile}"`, {
+      stdio: "pipe",
+    }).toString();
+  } catch (e) {
+    const err = e as { stdout?: Buffer; stderr?: Buffer };
+    return err.stdout?.toString() ?? err.stderr?.toString() ?? "";
+  }
+}
+
+function safeArtifactId(attemptId: string): string {
+  const suffix = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${attemptId}-${suffix}`;
+}
+
+function artifactDirFor(id: string): string {
+  return path.join(ARTIFACTS_DIR, id);
+}
+
+function manifestPathFor(id: string): string {
+  return path.join(artifactDirFor(id), "manifest.json");
+}
+
+function writePatchArtifactManifest(manifest: PatchArtifactManifest): void {
+  fs.writeFileSync(manifestPathFor(manifest.id), JSON.stringify(manifest, null, 2) + "\n", "utf8");
+}
+
+export function createPatchArtifact(
+  slot: string,
+  attemptId: string,
+  files: string[],
+  notes: string[],
+  verificationLines: string[] = [],
+): PatchArtifactManifest {
+  ensureDirectoryExists(slot, `Failed to create patch artifact for ${attemptId}: slot directory`);
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+
+  const id = safeArtifactId(attemptId);
+  const artifactDir = path.join(ARTIFACTS_DIR, id);
+  const filesDir = path.join(artifactDir, "files");
+  fs.mkdirSync(filesDir, { recursive: true });
+
+  const patchText = files.map((file) => diffForFile(slot, file)).filter(Boolean).join("\n");
+  const patchFile = path.join(artifactDir, "patch.diff");
+  fs.writeFileSync(patchFile, patchText, "utf8");
+
+  for (const file of files) {
+    const src = path.join(slot, file);
+    if (!pathExists(src)) continue;
+    const dst = path.join(filesDir, file);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+  }
+
+  const verificationLog = path.join(artifactDir, "verification.log");
+  fs.writeFileSync(verificationLog, verificationLines.join("\n\n"), "utf8");
+
+  const manifest: PatchArtifactManifest = {
+    id,
+    attempt_id: attemptId,
+    created_at: new Date().toISOString(),
+    files_changed: files,
+    diff_lines: countDiffLines(slot, files),
+    patch_file: path.relative(PROJECT_ROOT, patchFile),
+    files_dir: path.relative(PROJECT_ROOT, filesDir),
+    verification_log: path.relative(PROJECT_ROOT, verificationLog),
+    status: "pending_review",
+    notes,
+  };
+
+  writePatchArtifactManifest(manifest);
+  return manifest;
+}
+
+export function listPatchArtifacts(): PatchArtifactManifest[] {
+  if (!pathExists(ARTIFACTS_DIR)) return [];
+  const manifests: PatchArtifactManifest[] = [];
+  for (const entry of fs.readdirSync(ARTIFACTS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = path.join(ARTIFACTS_DIR, entry.name, "manifest.json");
+    if (!pathExists(manifestPath)) continue;
+    try {
+      manifests.push(JSON.parse(fs.readFileSync(manifestPath, "utf8")) as PatchArtifactManifest);
+    } catch {
+      // Ignore malformed artifact manifests; review command should stay usable.
+    }
+  }
+  return manifests.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export function getPatchArtifact(idOrAttemptId: string): PatchArtifactManifest | undefined {
+  const artifacts = listPatchArtifacts();
+  return artifacts.find((a) => a.id === idOrAttemptId)
+    ?? artifacts.filter((a) => a.attempt_id === idOrAttemptId).at(-1);
+}
+
+export function approvePatchArtifact(idOrAttemptId: string): PatchArtifactManifest {
+  const manifest = getPatchArtifact(idOrAttemptId);
+  if (!manifest) throw new Error(`No patch artifact found for ${idOrAttemptId}`);
+  if (manifest.status !== "pending_review") {
+    throw new Error(`Patch artifact ${manifest.id} is ${manifest.status}, not pending_review`);
+  }
+
+  const artifactDir = artifactDirFor(manifest.id);
+  const filesDir = path.join(PROJECT_ROOT, manifest.files_dir);
+  ensureDirectoryExists(filesDir, `Failed to approve artifact ${manifest.id}: files directory`);
+
+  const backupDir = path.join(artifactDir, "backup");
+  fs.mkdirSync(backupDir, { recursive: true });
+  const backupEntries: ArtifactBackupEntry[] = [];
+
+  for (const relPath of manifest.files_changed) {
+    const src = path.join(filesDir, relPath);
+    const dst = path.join(PROJECT_ROOT, relPath);
+    ensureFileExists(src, `Failed to approve artifact ${manifest.id}: artifact file ${relPath}`);
+
+    if (pathExists(dst)) {
+      const backupFile = path.join(backupDir, relPath);
+      fs.mkdirSync(path.dirname(backupFile), { recursive: true });
+      fs.copyFileSync(dst, backupFile);
+      backupEntries.push({ file: relPath, existed: true });
+    } else {
+      backupEntries.push({ file: relPath, existed: false });
+    }
+
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+  }
+
+  fs.writeFileSync(path.join(backupDir, "backup-manifest.json"), JSON.stringify(backupEntries, null, 2) + "\n", "utf8");
+  manifest.status = "merged";
+  manifest.approved_at = new Date().toISOString();
+  manifest.backup_dir = path.relative(PROJECT_ROOT, backupDir);
+  manifest.notes = [...manifest.notes, "approved and merged to project source"];
+  writePatchArtifactManifest(manifest);
+  return manifest;
+}
+
+export function rejectPatchArtifact(idOrAttemptId: string): PatchArtifactManifest {
+  const manifest = getPatchArtifact(idOrAttemptId);
+  if (!manifest) throw new Error(`No patch artifact found for ${idOrAttemptId}`);
+  if (manifest.status !== "pending_review") {
+    throw new Error(`Patch artifact ${manifest.id} is ${manifest.status}, not pending_review`);
+  }
+  manifest.status = "rejected";
+  manifest.rejected_at = new Date().toISOString();
+  manifest.notes = [...manifest.notes, "rejected during review"];
+  writePatchArtifactManifest(manifest);
+  return manifest;
+}
+
+export function rollbackPatchArtifact(idOrAttemptId: string): PatchArtifactManifest {
+  const manifest = getPatchArtifact(idOrAttemptId);
+  if (!manifest) throw new Error(`No patch artifact found for ${idOrAttemptId}`);
+  if (manifest.status !== "merged") {
+    throw new Error(`Patch artifact ${manifest.id} is ${manifest.status}, not merged`);
+  }
+  if (!manifest.backup_dir) {
+    throw new Error(`Patch artifact ${manifest.id} has no backup_dir; cannot rollback safely`);
+  }
+
+  const backupDir = path.join(PROJECT_ROOT, manifest.backup_dir);
+  const backupManifestPath = path.join(backupDir, "backup-manifest.json");
+  ensureFileExists(backupManifestPath, `Failed to rollback artifact ${manifest.id}: backup manifest`);
+  const backupEntries = JSON.parse(fs.readFileSync(backupManifestPath, "utf8")) as ArtifactBackupEntry[];
+
+  for (const entry of backupEntries) {
+    const dst = path.join(PROJECT_ROOT, entry.file);
+    if (entry.existed) {
+      const backupFile = path.join(backupDir, entry.file);
+      ensureFileExists(backupFile, `Failed to rollback artifact ${manifest.id}: backup file ${entry.file}`);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(backupFile, dst);
+    } else if (pathExists(dst)) {
+      fs.rmSync(dst, { force: true });
+    }
+  }
+
+  manifest.status = "rolled_back";
+  manifest.rolled_back_at = new Date().toISOString();
+  manifest.notes = [...manifest.notes, "rolled back from approval backup"];
+  writePatchArtifactManifest(manifest);
+  return manifest;
 }
 
 function runTypecheck(slot: string): { passed: boolean; output: string; errorCount: number } {

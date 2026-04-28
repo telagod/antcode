@@ -3,15 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { appendJsonl, overwriteJsonl, readJsonl, StorageError, tryReadJson } from "../src/storage.js";
+import { appendJsonl, overwriteJsonl, readJson, readJsonl, StorageError, tryReadJson } from "../src/storage.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "storage-test-"));
 
 try {
   const malformedJsonPath = path.join(tempRoot, "bad.json");
   fs.writeFileSync(malformedJsonPath, "{bad", "utf8");
+
   assert.throws(
-    () => tryReadJson(malformedJsonPath, {}),
+    () => readJson(malformedJsonPath, {}),
     (error: unknown) => {
       assert.ok(error instanceof StorageError);
       assert.equal(error.code, "PARSE_FAILED");
@@ -20,6 +21,9 @@ try {
       return true;
     },
   );
+
+  const recovered = tryReadJson(malformedJsonPath, { recovered: true });
+  assert.deepEqual(recovered, { value: { recovered: true }, found: true });
 
   const partialJsonlPath = path.join(tempRoot, "partial.jsonl");
   fs.writeFileSync(partialJsonlPath, '{"ok":1}\n{"bad"', "utf8");

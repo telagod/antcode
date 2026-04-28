@@ -77,6 +77,23 @@ export interface Attempt {
   notes: string[];
 }
 
+export interface PatchArtifactManifest {
+  id: string;
+  attempt_id: string;
+  created_at: string;
+  approved_at?: string;
+  rejected_at?: string;
+  rolled_back_at?: string;
+  files_changed: string[];
+  diff_lines: number;
+  patch_file: string;
+  files_dir: string;
+  verification_log: string;
+  backup_dir?: string;
+  status: "pending_review" | "merged" | "rejected" | "rolled_back";
+  notes: string[];
+}
+
 export interface RewardBundle {
   id: string;
   attempt_id: string;
