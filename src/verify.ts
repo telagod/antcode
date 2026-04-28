@@ -7,7 +7,10 @@ import { PatchArtifactManifest } from "./types";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const ARTIFACTS_DIR = path.join(PROJECT_ROOT, ".antcode", "artifacts");
+const ANTCODE_DIR = path.join(PROJECT_ROOT, ".antcode");
+const ARTIFACTS_DIR = path.join(ANTCODE_DIR, "artifacts");
+const WORKBENCHES_DIR = path.join(ANTCODE_DIR, "workbenches");
+const MAX_ACTIVE_SLOTS = Number(process.env.ANTCODE_MAX_WORKBENCHES ?? 4);
 const WORKSPACE_FILES = ["package.json", "package-lock.json", "tsconfig.json"] as const;
 const WORKSPACE_DIRS = ["src", "tests", "schemas", "templates"] as const;
 
@@ -27,6 +30,7 @@ export interface VerifyResult {
 }
 
 let baselineErrorsBySlot = new Map<string, number>();
+const activeSlots = new Set<string>();
 
 function countTsErrors(output: string): number {
   return output.split("\n").filter((l: string) => l.includes("error TS")).length;
@@ -92,7 +96,15 @@ function ensureFileExists(targetPath: string, context: string): void {
 }
 
 export function createSlot(slotId: number): string {
-  const dir = path.join(PROJECT_ROOT, `workbench_${slotId}`);
+  if (!Number.isInteger(slotId) || slotId < 0) {
+    throw new Error(`Failed to create slot: invalid slot id ${slotId}`);
+  }
+  if (activeSlots.size >= MAX_ACTIVE_SLOTS) {
+    throw new Error(`Failed to create slot ${slotId}: active workbench limit reached (${MAX_ACTIVE_SLOTS})`);
+  }
+
+  fs.mkdirSync(WORKBENCHES_DIR, { recursive: true });
+  const dir = path.join(WORKBENCHES_DIR, `slot_${slotId}`);
 
   // always start fresh
   if (pathExists(dir)) {
@@ -108,6 +120,7 @@ export function createSlot(slotId: number): string {
   }
 
   try {
+    activeSlots.add(dir);
     fs.mkdirSync(dir, { recursive: true });
     for (const file of WORKSPACE_FILES) {
       const src = path.join(PROJECT_ROOT, file);
@@ -125,6 +138,7 @@ export function createSlot(slotId: number): string {
       fs.symlinkSync(nodeModules, slotNodeModules, "dir");
     }
   } catch (e) {
+    activeSlots.delete(dir);
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* cleanup */ }
     throw new Error(formatFsError(`Failed to create slot ${slotId}`, e));
   }
@@ -168,6 +182,7 @@ export function resetSlot(slot: string): void {
 
 export function cleanupSlot(slot: string): void {
   baselineErrorsBySlot.delete(slot);
+  activeSlots.delete(slot);
   if (!pathExists(slot)) {
     return;
   }
@@ -183,6 +198,10 @@ export function cleanupSlot(slot: string): void {
   if (pathExists(slot)) {
     throw new Error(`Failed to cleanup slot ${slot}: directory still exists at ${slot}`);
   }
+}
+
+export function getActiveSlotCount(): number {
+  return activeSlots.size;
 }
 
 export function readSlotFile(slot: string, relPath: string): string | null {

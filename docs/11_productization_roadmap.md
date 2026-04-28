@@ -1,6 +1,6 @@
 # 11. Productization Roadmap
 
-AntCode v0.7.1 proves the first safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
+AntCode v0.8.0 proves the first clean runtime boundary on top of pi-agent-core while preserving the safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
 
 ## Product Thesis
 
@@ -91,13 +91,26 @@ Scope:
 - Policy packs for allowed files and commands
 - Audit trail for every automated decision
 
+### 6. Single pi Runtime Scaffold
+
+Scope:
+- Keep `realWorker` provider-agnostic
+- Use `pi-agent-core` as the only agent-turn/tool-loop scaffold
+- Let pi own provider compatibility, session affinity, hooks, tool validation, abort, and sequential execution
+- Keep AntCode focused on evolution strategy, reward, artifacts, tournament, and workbench safety
+
+Exit criteria:
+- `ANTCODE_RUNTIME` is optional and only accepts `pi` aliases
+- No native Responses/OpenAI SDK/AI SDK runtime forks remain in AntCode
+- Runtime behavior is covered by a small contract test and delegated to pi for provider breadth
+
 ## v0.6.0 Milestone: Product Foundation
 
 Goal: make AntCode a reliable CLI product base.
 
 Deliverables:
 - Passing typecheck and smoke tests
-- Current README reflects v0.7.1 behavior
+- Current README reflects v0.8.0 behavior
 - Product roadmap documented
 - No committed default LLM API key
 - CLI report/help version corrected
@@ -120,7 +133,7 @@ Deliverables:
 - Rollback command
 - Workspace-level config file
 
-### Current v0.7 Slice
+### Current v0.7.1 Slice
 
 Implemented first:
 
@@ -131,12 +144,23 @@ Implemented first:
 - `.antcode/artifacts/<artifact_id>/verification.log`
 - `review-attempt [attempt_id|artifact_id]`
 
-Still pending before v0.7 is complete:
+Still pending for the safety line:
 
 - stronger artifact status transitions
 - workspace config and retention policy
 
-## v0.8.0 Milestone: Local Service Mode
+## v0.8.0 Milestone: Runtime Boundary Cleanup
+
+Goal: stop spending AntCode effort on non-core provider/tool-loop compatibility.
+
+Deliverables:
+- Single `pi-agent-core` runtime scaffold
+- `@mariozechner/pi-ai` task generation
+- Removed native Responses/OpenAI SDK/AI SDK runtime forks
+- Workbench lifecycle cap and cleanup guard
+- Runtime contract test
+
+## v0.9.0 Milestone: Local Service Mode
 
 Goal: expose AntCode as a local daemon/API.
 

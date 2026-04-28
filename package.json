@@ -1,7 +1,7 @@
 {
   "name": "antcode",
-  "version": "0.7.1",
-  "description": "AntCode v0.7.1: Root package layout with safe self-evolving patch artifacts",
+  "version": "0.8.0",
+  "description": "AntCode v0.8.0: Self-evolving code agent with pi-agent-core runtime scaffold",
   "type": "module",
   "private": true,
   "files": [
@@ -12,6 +12,7 @@
     "examples",
     "tests",
     "scripts",
+    ".env.example",
     "README.md",
     "LICENSE",
     "VERSION.md",
@@ -27,12 +28,16 @@
     "show:genomes": "tsx src/cli.ts show-genomes",
     "show:mutations": "tsx src/cli.ts show-mutations",
     "show:health": "tsx src/cli.ts show-health",
-    "test": "node tests/index-crossover-export.test.mjs && tsx tests/storage-error-handling.test.ts && tsx tests/artifact-lifecycle.test.ts",
+    "test": "node tests/index-crossover-export.test.mjs && tsx tests/storage-error-handling.test.ts && tsx tests/artifact-lifecycle.test.ts && tsx tests/runtime-abstraction.test.ts && tsx tests/workbench-guard.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.70.6",
+    "@mariozechner/pi-ai": "^0.70.6"
   }
 }

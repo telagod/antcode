@@ -11,3 +11,8 @@ workbench_*/
 .ace-tool/
 *.output
 *.tgz
+
+# Local secrets / environment overrides
+.env
+.env.*
+!.env.example

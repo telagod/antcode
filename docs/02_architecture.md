@@ -54,6 +54,24 @@ high_diff_cost → action_strategy 缩小 patch 粒度
 reward_hacking → quarantine / reward profile 收紧
 ```
 
+## Agent Runtime Boundary
+
+Real workers do not talk to a model provider directly. They build a task prompt, prepare an isolated workspace, and call the single `AgentRuntime` implementation backed by `pi-agent-core`. AntCode no longer carries multiple SDK/tool-loop adapters: pi owns the agent turn, tool schema plumbing, hooks, session affinity, and sequential tool execution; AntCode owns strategy evolution, reward, artifacts, tournament, and safe workspace orchestration.
+
+```text
+realAttempt
+    ↓
+AgentRuntime.run({ input, ops, cwd, cacheKey })
+    ↓
+pi-agent-core scaffold
+    ↓
+local tool operations
+    ↓
+AgentRunResult
+```
+
+This keeps AntCode's core product logic focused on strategy evolution, reward, artifacts, tournament, and safe workspace orchestration. Model-provider compatibility belongs to the pi ecosystem; AntCode keeps the learning loop small and product-focused.
+
 ## 文件先行
 
 所有状态都保存在 `.antcode/` 下的 JSON/JSONL 文件中：

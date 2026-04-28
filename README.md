@@ -9,7 +9,7 @@ AntCode is an autonomous code-improvement system that learns which coding strate
 [![Release](https://img.shields.io/github/v/release/telagod/antcode?style=flat-square)](https://github.com/telagod/antcode/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Status](https://img.shields.io/badge/status-v0.7.1%20safe%20self--modification-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.7.1)
+[![Status](https://img.shields.io/badge/status-v0.8.0%20pi%20runtime-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.8.0)
 
 </div>
 
@@ -31,19 +31,18 @@ StrategyGenome
   -> Better Sampling Policy
 ```
 
-## What is new in v0.7.1
+## What is new in v0.8.0
 
-v0.7.1 is the first safe self-modification release. AntCode can now generate patch artifacts without immediately writing them back to the source tree.
+v0.8.0 is the runtime cleanup release. AntCode now keeps one clean agent runtime path on `pi-agent-core` instead of maintaining native Responses, OpenAI SDK, and AI SDK tool-loop forks.
 
 ```text
-real run --no-auto-merge
-  -> .antcode/artifacts/<artifact_id>/
-  -> review-attempt
-  -> approve-attempt | reject-attempt
-  -> rollback-attempt when needed
+AntCode core
+  -> strategy / reward / artifacts / tournament / workbench safety
+  -> pi-agent-core runtime scaffold
+  -> provider compatibility and tool execution plumbing
 ```
 
-This is the important bridge between “an assistant edits the repo” and “AntCode can safely work on itself.”
+This keeps AntCode focused on its core product: learning which code-improvement strategies work and applying them safely.
 
 ## Features
 
@@ -77,6 +76,7 @@ npm run demo
 Run a real LLM-backed loop:
 
 ```bash
+export ANTCODE_RUNTIME="pi" # optional; pi-agent-core is the single runtime scaffold
 export ANTCODE_LLM_BASE_URL="https://your-openai-compatible-endpoint/v1"
 export ANTCODE_LLM_API_KEY="sk-..."
 export ANTCODE_LLM_MODEL="gpt-5.4"
@@ -160,7 +160,8 @@ Core modules:
 | Module | Responsibility |
 |---|---|
 | `src/cli.ts` | CLI entrypoint, experiment loop, reporting, artifact commands |
-| `src/realWorker.ts` | Real LLM tool loop and shared reconnaissance |
+| `src/realWorker.ts` | Real attempt orchestration and shared reconnaissance |
+| `src/runtime/` | Single pi-agent-core runtime scaffold and AntCode runtime contract |
 | `src/tools/` | Universal tool definitions and local operations backend |
 | `src/verify.ts` | Workbench slots, patch artifacts, approval, rejection, rollback |
 | `src/reward.ts` | Reward calculation and failure-mode signal |
@@ -192,9 +193,13 @@ Treat this as product data. It explains why a strategy was selected, how it perf
 
 | Variable | Default | Description |
 |---|---:|---|
+| `ANTCODE_RUNTIME` | `pi` | Agent runtime scaffold. AntCode intentionally keeps one clean runtime path on `pi-agent-core`. |
 | `ANTCODE_LLM_BASE_URL` | `https://sub.foxnio.com/v1` | OpenAI-compatible API base URL |
 | `ANTCODE_LLM_API_KEY` | — | Required for real LLM mode |
 | `ANTCODE_LLM_MODEL` | `gpt-5.4` | Model used by real worker and task generation |
+| `ANTCODE_MAX_WORKBENCHES` | `4` | Safety cap for simultaneously active workbench slots |
+| `ANTCODE_AGENT_TIMEOUT_MS` | `45000` | Per-attempt pi agent timeout |
+| `ANTCODE_TASKGEN_TIMEOUT_MS` | `30000` | Dynamic task generation timeout |
 | `ANTCODE_CONCURRENCY` | `3` | Parallel real workers per batch |
 
 No API key is required for mock evolution.
@@ -212,21 +217,21 @@ Latest recorded benchmark from the v0.5 optimization line:
 | Average diff size | 16 lines |
 | Genome pool | 7 active / 4 candidate / 26 suppressed |
 
-v0.7 focuses on safety and release hygiene rather than a new performance benchmark.
+v0.8 focuses on runtime boundary cleanup and release hygiene rather than a new performance benchmark.
 
 ## Roadmap
 
-- **v0.7.x** — harden artifact status transitions, retention policy, and workspace configuration.
-- **v0.8** — local service mode with HTTP API and background queue.
-- **v0.9** — web console for runs, strategies, costs, patches, and failure modes.
-- **v1.0** — safe repository maintenance product with policy packs, approval gates, and audit logs.
+- **v0.8.x** — harden pi runtime observability, artifact status transitions, and workspace configuration.
+- **v0.9** — local service mode with HTTP API and background queue.
+- **v1.0** — web console for runs, strategies, costs, patches, and failure modes.
+- **v1.1** — safe repository maintenance product with policy packs, approval gates, and audit logs.
 
 See [`docs/11_productization_roadmap.md`](docs/11_productization_roadmap.md).
 
 ## Release
 
-- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.7.1>
-- Package artifact: [`antcode-0.7.1.tgz`](https://github.com/telagod/antcode/releases/download/v0.7.1/antcode-0.7.1.tgz)
+- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.8.0>
+- Package artifact: [`antcode-0.8.0.tgz`](https://github.com/telagod/antcode/releases/download/v0.8.0/antcode-0.8.0.tgz)
 
 ## Security model
 

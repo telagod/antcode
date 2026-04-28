@@ -109,7 +109,15 @@ const bashTool: ToolDef = {
     required: ["command"],
   },
   execute(args, ops, cwd) {
-    const { exitCode, stdout, stderr } = ops.exec(args.command as string, cwd, (args.timeout as number) ?? 30000);
+    const command = String(args.command ?? "");
+    const normalized = command.toLowerCase();
+    const invokesExperiment = normalized.includes("run-experiment") || normalized.includes("demo:real");
+    const invokesRealMode = normalized.includes("--real") || normalized.includes("demo:real") || normalized.includes("antcode_llm_api_key");
+    if (invokesExperiment && invokesRealMode) {
+      return "exit=126\nblocked: nested real AntCode runs are not allowed from inside a workbench";
+    }
+
+    const { exitCode, stdout, stderr } = ops.exec(command, cwd, (args.timeout as number) ?? 30000);
     const out = [stdout, stderr].filter(Boolean).join("\n").slice(0, 4000);
     return `exit=${exitCode}\n${out}`;
   },

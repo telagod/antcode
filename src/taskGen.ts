@@ -1,5 +1,7 @@
+import { completeSimple } from "@mariozechner/pi-ai";
 import { ExperienceKey } from "./types";
 import { RealTask } from "./tasks";
+import { createPiModel, API_KEY } from "./runtime/piModel";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,9 +10,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_SRC = path.resolve(__dirname);
 
-const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
-const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
-const MODEL = process.env.ANTCODE_LLM_MODEL ?? "gpt-5.4";
+const TASKGEN_TIMEOUT_MS = Number(process.env.ANTCODE_TASKGEN_TIMEOUT_MS ?? 30000);
+
+
+async function withTimeout<T>(label: string, timeoutMs: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([run(controller.signal), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function scanSourceFiles(): Record<string, string> {
   const files: Record<string, string> = {};
@@ -146,6 +164,45 @@ function toRealTask(raw: RawTask): RealTask {
   };
 }
 
+async function generateTaskTextWithPi(prompt: { instructions: string; input: string }): Promise<string> {
+  const message = await withTimeout("pi task generation", TASKGEN_TIMEOUT_MS, (signal) => completeSimple(
+    createPiModel(),
+    {
+      systemPrompt: prompt.instructions,
+      messages: [{ role: "user", content: prompt.input, timestamp: Date.now() }],
+    },
+    {
+      signal,
+      apiKey: API_KEY,
+      maxRetries: 2,
+      timeoutMs: TASKGEN_TIMEOUT_MS,
+    },
+  ));
+
+  return message.content
+    .filter((content) => content.type === "text")
+    .map((content) => content.text)
+    .join("");
+}
+
+function rawTasksToRealTasks(rawTasks: RawTask[]): RealTask[] {
+  // filter out add_test tasks if no test framework is installed
+  const hasTestFramework = fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/vitest")) ||
+    fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/jest"));
+  const filtered = rawTasks.filter((t) => {
+    if (t.goal_pattern === "add_test" && !hasTestFramework) return false;
+    return true;
+  });
+  const tasks = filtered
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 5)
+    .map((task, index) => toRealTask(validateRawTask(task, index)))
+    .map((task, index) => validateRealTask(task, index));
+  console.log(`  taskGen: discovered ${tasks.length} tasks${rawTasks.length !== filtered.length ? ` (filtered ${rawTasks.length - filtered.length} test tasks — no test framework)` : ""}`);
+  for (const t of tasks) console.log(`    - [${t.key.goal_pattern}] ${t.description.slice(0, 80)}`);
+  return tasks;
+}
+
 export async function generateTasks(): Promise<RealTask[]> {
   if (!API_KEY) {
     console.log("  taskGen: ANTCODE_LLM_API_KEY not set; fallback to static tasks");
@@ -154,73 +211,12 @@ export async function generateTasks(): Promise<RealTask[]> {
 
   const files = scanSourceFiles();
   const prompt = buildScanPrompt(files);
-
-  const res = await fetch(`${BASE_URL}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({ model: MODEL, instructions: prompt.instructions, input: prompt.input, stream: true }),
-  });
-
-  if (!res.ok) {
-    console.error(`  taskGen API error: ${res.status}`);
-    return [];
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) return [];
-
-  const decoder = new TextDecoder();
-  let fullText = "";
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
-      try {
-        const event = JSON.parse(data);
-        if (event.type === "response.output_text.delta" && event.delta) fullText += event.delta;
-        if (event.type === "response.completed" && event.response?.output) {
-          for (const item of event.response.output) {
-            if (item.type === "message" && item.content) {
-              for (const c of item.content) {
-                if (c.type === "output_text" && c.text) fullText = c.text;
-              }
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
-  }
+  const fullText = await generateTaskTextWithPi(prompt);
 
   if (!fullText) return [];
 
   try {
-    const rawTasks = parseRawTasks(fullText);
-    // filter out add_test tasks if no test framework is installed
-    const hasTestFramework = fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/vitest")) ||
-      fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/jest"));
-    const filtered = rawTasks.filter((t) => {
-      if (t.goal_pattern === "add_test" && !hasTestFramework) return false;
-      return true;
-    });
-    const tasks = filtered
-      .sort((a, b) => a.priority - b.priority)
-      .slice(0, 5)
-      .map((task, index) => toRealTask(validateRawTask(task, index)))
-      .map((task, index) => validateRealTask(task, index));
-    console.log(`  taskGen: discovered ${tasks.length} tasks${rawTasks.length !== filtered.length ? ` (filtered ${rawTasks.length - filtered.length} test tasks — no test framework)` : ""}`);
-    for (const t of tasks) console.log(`    - [${t.key.goal_pattern}] ${t.description.slice(0, 80)}`);
-    return tasks;
+    return rawTasksToRealTasks(parseRawTasks(fullText));
   } catch (e) {
     failGenerateTasks("generateTasks failed while parsing or validating upstream results", e);
   }

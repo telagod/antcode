@@ -537,7 +537,7 @@ function showReport(): void {
   }
 
   console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║       AntCode v0.7.1 Experiment Report   ║");
+  console.log("║       AntCode v0.8.0 Experiment Report   ║");
   console.log("╚══════════════════════════════════════════╝\n");
 
   console.log("── Overview ──");
@@ -707,7 +707,7 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
   if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.7.1\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  console.log("AntCode v0.8.0\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);
