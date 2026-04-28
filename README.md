@@ -95,7 +95,6 @@ src/
 ├── taskGen.ts          # Dynamic task generation via LLM
 └── tasks.ts            # Static task definitions
 ```
-## PLACEHOLDER_README_P2
 
 ## Key Concepts
 
@@ -141,25 +140,52 @@ All file/shell operations go through an `Operations` interface. The default impl
 - Docker operations (containerized builds)
 - Custom backends (any language, any platform)
 
-## Performance (v0.5.0, 30 rounds)
+## Performance
+
+### Latest (v0.5.0 optimized, 12 rounds)
 
 ```
-Success rate:     56.7% (17/30 attempts succeeded and merged)
-Cache hit rate:   47.7% (peak 63.6%)
-Cost per attempt: $0.16
-Avg diff size:    10 lines
-Genome convergence: 7 active / 5 candidate / 25 suppressed (from 37 total)
+Success rate:     91.7% (11/12 attempts succeeded and merged)
+Cache hit rate:   41.5%
+Cost per attempt: $0.24
+Avg reward:       0.656
+Avg diff size:    16 lines
+Genome convergence: 7 active / 4 candidate / 26 suppressed
 ```
+
+### Evolution over time
+
+| Phase | Rounds | Success | Cache | Cost/attempt |
+|-------|--------|---------|-------|-------------|
+| v0.4.0 pre-tooluse | 18 | 44% | 0% | $0.33 |
+| v0.4.0 tool use | 12 | 50% | 15% | $0.13 |
+| v0.5.0 initial | 30 | 57% | 48% | $0.16 |
+| v0.5.0 + exploration timeout | 12 | 83% | 43% | $0.22 |
+| v0.5.0 + shared recon | 12 | **92%** | 42% | $0.24 |
 
 ### Top Strategies
 
 | Strategy | Success Rate | Avg Reward |
 |----------|-------------|------------|
-| refactor_big_bang_v6 | 100% (3/3) | 0.712 |
-| type_fix_broad_v6 | 100% (3/3) | 0.674 |
-| scout_then_narrow_v2 | 100% (3/3) | 0.665 |
-| refactor_big_bang_v1 | 100% (2/2) | 0.679 |
-| type_fix_careful_v1 | 67% (2/3) | 0.626 |
+| refactor_big_bang_v4 | 100% (3/3) | 0.661 |
+| scout_then_narrow_v2 | 100% (2/2) | 0.714 |
+| refactor_big_bang_v6 | 100% (1/1) | 0.706 |
+| refactor_big_bang_v3 | 100% (1/1) | 0.680 |
+| test_first_minimal_v1 | 100% (1/1) | 0.678 |
+
+### Code Self-Improved By LLM
+
+Over the course of evolution, the LLM autonomously found and fixed:
+
+- `storage.ts` — structured StorageError, tryReadJson/tryReadJsonl fallbacks
+- `insights.ts` — safe JSONL reading, malformed file tolerance
+- `verify.ts` — mergeToProject error handling, duplicate function removal
+- `mutation.ts` — child strategy id derivation fix
+- `mutationOps.ts` — context_underread change tracking, import tightening
+- `crossover.ts` — JSON.parse clone → structuredClone
+- `collaboration.ts` — discovery JSONL validation
+- `taskGen.ts` — input validation, structured error handling
+- `index.ts` — missing module exports (crossover, simulator, etc.)
 
 ## Version History
 
@@ -167,7 +193,21 @@ Genome convergence: 7 active / 5 candidate / 25 suppressed (from 37 total)
 |---------|-------------|
 | v0.3.2 | Mock-only MVP: strategy genome + mutation + tournament |
 | v0.4.0 | Real LLM worker, concurrent execution, adaptive mutation, cost-aware reward |
-| v0.5.0 | Universal tools, multi-round agent loop, autonomous exploration, multi-agent collaboration, prompt cache optimization |
+| v0.5.0 | Universal tools, multi-round agent loop, autonomous exploration, multi-agent collaboration, 91.7% success rate |
+
+## Project Structure
+
+```
+antcode/
+├── README.md
+├── antcode_v0_5_0/          # Current version
+│   ├── src/                 # Source code
+│   ├── .antcode/            # Evolution state (genomes, pheromones, policy)
+│   ├── docs/                # Design documents
+│   ├── schemas/             # JSON schemas
+│   └── templates/           # YAML templates
+└── archives/                # Previous versions
+```
 
 ## License
 
