@@ -1,4 +1,4 @@
-import { Attempt, FailureMode, MutationEvent, StrategyGenome } from "./types";
+import type { Attempt, FailureMode, MutationEvent, StrategyGenome } from "./types";
 
 export interface MutationEvidence {
   actual_diff_lines?: number;

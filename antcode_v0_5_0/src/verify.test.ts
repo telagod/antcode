@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { mockAttempt } from "./index.ts";
 import { captureBaseline } from "./verify.ts";
-import { getRecentDiscoveries, recordDiscovery, withDiscoveryFileForTest } from "./collaboration.ts";
+import { formatDiscoveriesForPrompt, getRecentDiscoveries, recordDiscovery, withDiscoveryFileForTest } from "./collaboration.ts";
 import { ExperienceKey, StrategyGenome } from "./types.ts";
 
 const key: ExperienceKey = {
@@ -74,7 +74,7 @@ test("captureBaseline surfaces actionable slot context for missing directories",
   );
 });
 
-test("getRecentDiscoveries skips malformed JSONL rows and preserves valid discoveries", () => {
+test("getRecentDiscoveries skips malformed and schema-invalid JSONL rows and preserves valid discoveries", () => {
   withDiscoveryFileForTest((discoveryFile) => {
     fs.mkdirSync(path.dirname(discoveryFile), { recursive: true });
     fs.writeFileSync(
@@ -82,6 +82,7 @@ test("getRecentDiscoveries skips malformed JSONL rows and preserves valid discov
       [
         JSON.stringify({ agentId: 1, timestamp: "2024-01-01T00:00:00.000Z", file: "src/a.ts", finding: "valid first", fixed: false }),
         "{not valid json",
+        JSON.stringify({ agentId: "2", timestamp: "2024-01-01T00:01:00.000Z", file: "src/invalid.ts", finding: "wrong shape", fixed: true }),
         JSON.stringify({ agentId: 2, timestamp: "2024-01-01T00:01:00.000Z", file: "src/b.ts", finding: "valid second", fixed: true }),
       ].join("\n") + "\n",
       "utf8",
@@ -97,20 +98,32 @@ test("getRecentDiscoveries skips malformed JSONL rows and preserves valid discov
   });
 });
 
-test("recordDiscovery swallows append failures", () => {
+test("formatDiscoveriesForPrompt ignores malformed discovery rows and still renders valid entries", () => {
   withDiscoveryFileForTest((discoveryFile) => {
     fs.mkdirSync(path.dirname(discoveryFile), { recursive: true });
-    fs.mkdirSync(discoveryFile);
+    fs.writeFileSync(
+      discoveryFile,
+      [
+        "{bad json",
+        JSON.stringify({ agentId: 7, timestamp: "2024-01-01T00:03:00.000Z", file: "src/fixed.ts", finding: "fixed discovery", fixed: true }),
+        JSON.stringify({ agentId: 8, timestamp: "2024-01-01T00:04:00.000Z", file: "src/open.ts", finding: "open discovery", fixed: false }),
+        JSON.stringify({ agentId: 9, timestamp: 123, file: "src/invalid.ts", finding: "bad timestamp", fixed: false }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
 
-    assert.doesNotThrow(() => {
-      recordDiscovery({
-        agentId: 3,
-        timestamp: "2024-01-01T00:02:00.000Z",
-        file: "src/c.ts",
-        finding: "append should not crash",
-        fixed: false,
-      });
-    });
+    assert.equal(
+      formatDiscoveriesForPrompt(),
+      [
+        "## Discoveries from other agents",
+        "",
+        "Already fixed (don't repeat):",
+        "- src/fixed.ts: fixed discovery",
+        "",
+        "Known issues (you could fix one):",
+        "- src/open.ts: open discovery",
+      ].join("\n"),
+    );
   });
 });
 

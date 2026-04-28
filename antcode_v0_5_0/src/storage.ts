@@ -1,6 +1,35 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).every(isJsonValue);
+  }
+
+  return false;
+}
+
 export type StorageErrorCode =
   | "READ_FAILED"
   | "PARSE_FAILED"
@@ -45,7 +74,23 @@ export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
+export function tryReadJson<T extends JsonValue>(file: string, fallback: T): ReadJsonResult<T> {
+  try {
+    return { value: readJson(file, fallback), found: fs.existsSync(file) };
+  } catch (error) {
+    if (error instanceof StorageError && (error.code === "PARSE_FAILED" || error.code === "READ_FAILED")) {
+      const nodeError = error.cause as NodeJS.ErrnoException | undefined;
+      const fileExists =
+        error.code === "READ_FAILED" && nodeError?.code === "ENOENT"
+          ? false
+          : fs.existsSync(file);
+      return { value: fallback, found: fileExists };
+    }
+    throw error;
+  }
+}
+
+export function readJson<T extends JsonValue>(file: string, fallback: T): T {
   let content: string;
 
   try {
@@ -53,7 +98,7 @@ export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
   } catch (error) {
     const nodeError = error as NodeJS.ErrnoException;
     if (nodeError && nodeError.code === "ENOENT") {
-      return { value: fallback, found: false };
+      return fallback;
     }
 
     const message = error instanceof Error ? error.message : String(error);
@@ -67,7 +112,11 @@ export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
   }
 
   try {
-    return { value: JSON.parse(content) as T, found: true };
+    const parsed: unknown = JSON.parse(content);
+    if (!isJsonValue(parsed)) {
+      throw new Error("parsed value is not valid JSON data");
+    }
+    return parsed as T;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new StorageError({
@@ -79,22 +128,6 @@ export function tryReadJson<T>(file: string, fallback: T): ReadJsonResult<T> {
     });
   }
 }
-
-export function tryReadJsonl<T>(file: string, fallback: T[]): ReadJsonResult<T[]> {
-  try {
-    return { value: readJsonl<T>(file), found: fs.existsSync(file) };
-  } catch (error) {
-    if (error instanceof StorageError && (error.code === "PARSE_FAILED" || error.code === "READ_FAILED")) {
-      return { value: fallback, found: true };
-    }
-    throw error;
-  }
-}
-
-export function readJson<T>(file: string, fallback: T): T {
-  return tryReadJson(file, fallback).value;
-}
-
 export function writeJson(file: string, value: unknown): void {
   try {
     ensureDir(path.dirname(file));
@@ -137,7 +170,23 @@ export function writeJson(file: string, value: unknown): void {
   }
 }
 
-export function readJsonl<T>(file: string): T[] {
+export function tryReadJsonl<T extends JsonValue>(file: string, fallback: T[]): ReadJsonResult<T[]> {
+  try {
+    return { value: readJsonl<T>(file), found: fs.existsSync(file) };
+  } catch (error) {
+    if (error instanceof StorageError && (error.code === "PARSE_FAILED" || error.code === "READ_FAILED")) {
+      const nodeError = error.cause as NodeJS.ErrnoException | undefined;
+      const fileExists =
+        error.code === "READ_FAILED" && nodeError?.code === "ENOENT"
+          ? false
+          : fs.existsSync(file);
+      return { value: fallback, found: fileExists };
+    }
+    throw error;
+  }
+}
+
+export function readJsonl<T extends JsonValue>(file: string): T[] {
   let content: string;
 
   try {
@@ -170,7 +219,11 @@ export function readJsonl<T>(file: string): T[] {
     }
 
     try {
-      values.push(JSON.parse(line) as T);
+      const parsed: unknown = JSON.parse(line);
+      if (!isJsonValue(parsed)) {
+        throw new Error("parsed value is not valid JSON data");
+      }
+      values.push(parsed as T);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isLastLine = index === rawLines.length - 1;

@@ -20,7 +20,7 @@ import {
 import { buildRewardBundle } from "./reward";
 import { canMutate, mutateGenome } from "./mutation";
 import { mockAttempt } from "./simulator";
-import { realAttempt } from "./realWorker";
+import { realAttempt, runSharedRecon } from "./realWorker";
 import { realTasks } from "./tasks";
 import { generateTasks } from "./taskGen";
 import { mergeFilesToProject } from "./verify";
@@ -304,6 +304,7 @@ async function runExperiment(iterations = 8, useReal = false): Promise<void> {
   for (let i = 0; i < iterations;) {
     if (useReal) {
       const batchSize = Math.min(CONCURRENCY, iterations - i);
+      await runSharedRecon(slotCounter++);
       const assignments = assignFocusAreas(batchSize);
       const jobs: Array<{ key: ExperienceKey; genome: StrategyGenome; slotId: number; task: typeof realTasks[0] | undefined; assignment: typeof assignments[0] }> = [];
 

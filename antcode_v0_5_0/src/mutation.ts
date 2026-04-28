@@ -67,7 +67,7 @@ export function mutateGenome(
     if (child.status === "quarantined") break;
   }
 
-  const type = types.length > 1 ? `compound[${types.join("+")}]` : types[0];
+  const type = types.length > 1 ? `compound[${types.join("+")}]` : (types[0] ?? "unknown_mutation");
   const hypothesis = hypotheses.join(" ");
 
   const keyHash = attempts[0]

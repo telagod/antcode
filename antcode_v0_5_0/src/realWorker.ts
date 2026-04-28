@@ -273,6 +273,34 @@ async function runToolLoop(
 }
 // REALWORKER_ATTEMPT
 
+// === Shared reconnaissance — run once, inject into all agents' prefix ===
+let cachedRecon: string | null = null;
+let reconSlotId = -1;
+
+export async function runSharedRecon(slotId: number): Promise<string> {
+  const { createSlot, resetSlot, cleanupSlot } = await import("./verify");
+  const slot = createSlot(slotId);
+  resetSlot(slot);
+  const ops = createLocalOps(slot);
+
+  const fileList = ops.ls(slot);
+  const srcFiles = ops.find("*.ts", slot, { limit: 30 });
+  const structure = [
+    `## Project Structure (shared recon)`,
+    `### Root\n${fileList.join("\n")}`,
+    `### Source Files\n${srcFiles.join("\n")}`,
+  ].join("\n\n");
+
+  cleanupSlot(slot);
+  cachedRecon = structure;
+  reconSlotId = slotId;
+  return structure;
+}
+
+export function getSharedRecon(): string {
+  return cachedRecon ?? "";
+}
+
 export interface RealAttemptResult {
   attempt: Attempt;
   mergeFiles?: Record<string, string>;
@@ -303,7 +331,10 @@ export async function realAttempt(
     ? `## Task\n${task.description}`
     : `## Goal\nImprove code quality in this TypeScript project. Look for: missing error handling, type safety issues, dead code, missing exports, or code that could be cleaner.`;
 
+  const recon = getSharedRecon();
+
   const input = [
+    recon,
     goalHint,
     focusPrompt,
     discoveries,
@@ -311,7 +342,8 @@ export async function realAttempt(
     insights,
   ].filter(Boolean).join("\n\n");
 
-  const taskCacheKey = cacheKeyForTask(goalHint + (assignment?.focusArea ?? ""));
+  // cache key based on stable prefix (recon + goal), not variable parts
+  const taskCacheKey = cacheKeyForTask(recon + goalHint);
 
   let result: Awaited<ReturnType<typeof runToolLoop>>;
   try {

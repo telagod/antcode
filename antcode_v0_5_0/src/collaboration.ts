@@ -59,6 +59,19 @@ export interface Discovery {
   fixed: boolean;
 }
 
+function isDiscovery(value: unknown): value is Discovery {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.agentId === "number" &&
+    typeof candidate.timestamp === "string" &&
+    typeof candidate.file === "string" &&
+    typeof candidate.finding === "string" &&
+    typeof candidate.fixed === "boolean"
+  );
+}
+
 export function recordDiscovery(d: Discovery): void {
   const discoveryFile = getDiscoveryFile();
   try {
@@ -85,7 +98,8 @@ export function getRecentDiscoveries(limit = 10): Discovery[] {
     if (!trimmed) continue;
 
     try {
-      discoveries.push(JSON.parse(trimmed) as Discovery);
+      const parsed: unknown = JSON.parse(trimmed);
+      if (isDiscovery(parsed)) discoveries.push(parsed);
     } catch {
       // Skip malformed JSONL rows and preserve valid discoveries.
     }

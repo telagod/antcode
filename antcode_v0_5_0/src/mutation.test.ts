@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { crossover } from "./crossover.ts";
-import { applyOneMutation } from "./mutationOps.ts";
 import { mutateGenome } from "./mutation.ts";
-import type { Attempt, MutationEvent, RewardBundle, StrategyGenome } from "./types.ts";
+import { applyOneMutation } from "./mutationOps.ts";
+import type { Attempt, MutationEvent, StrategyGenome } from "./types.ts";
 
 function makeGenome(): StrategyGenome {
   return {
@@ -37,8 +36,31 @@ function makeGenome(): StrategyGenome {
     },
     reward_profile: {
       optimize_for: ["semantic_confidence"],
-      penalize_for: ["diff_size"],
+      punish: ["diff_size"],
     },
+    mutation_policy: [],
+  };
+}
+
+function makeAttempt(): Attempt {
+  return {
+    id: "attempt_1",
+    timestamp: new Date().toISOString(),
+    experience_key: {
+      goal_pattern: "storage",
+      module_region: "mutation and evolution",
+      context_shape: ["helper"],
+      risk_level: "medium",
+    },
+    strategy_genome_id: "strategy_v1",
+    worker: "codex",
+    result: "failure",
+    files_changed: ["src/mutation.ts"],
+    diff_lines: 12,
+    tests_added: 0,
+    commands_run: [],
+    boundary_violations: [],
+    notes: [],
   };
 }
 
@@ -68,42 +90,10 @@ test("applyOneMutation records the full updated read order after adding a critic
   });
 });
 
-      goal_pattern: "storage",
-      module_region: "mutation and evolution",
-      context_shape: ["helper"],
-      risk_level: "medium",
-    },
-    files_changed: ["src/mutation.ts"],
-    diff_lines: 12,
-    tests: [],
-    result: "fail",
-    failure_mode: "missing_test",
-    semantic_confidence: {
-      score: 0.8,
-      reasons: ["needs targeted test"],
-    },
-    guard_flags: [],
-    boundary_violations: [],
-    notes: [],
-    cost: {
-      tokens_in: 10,
-      tokens_out: 5,
-      wall_ms: 20,
-    },
-  };
-}
+test("mutateGenome falls back to a safe mutation type when no mutation handlers run", () => {
+  const parent = makeGenome();
 
-test("context_underread mutation records only newly added read step in changed diff", () => {
-  const child = makeGenome();
-  const changed: MutationEvent["mutation"]["changed"] = {};
+  const { event } = mutateGenome(parent, "duplicate_effort", [], 1, ["duplicate_effort"]);
 
-  const result = applyOneMutation(child, "context_underread", changed, [makeAttempt()]);
-
-  assert.equal(result.type, "context_expansion");
-  assert.deepEqual(changed["context_strategy.read_order"], {
-    from: ["scout"],
-    to: ["critical_dependency_scan"],
-  });
-  assert.deepEqual(child.context_strategy.read_order, ["critical_dependency_scan", "scout"]);
+  assert.equal(event.mutation.type, "unknown_mutation");
 });
-

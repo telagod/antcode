@@ -20,6 +20,11 @@ export interface VerifyResult {
 
 let baselineErrorsBySlot = new Map<string, number>();
 
+function countTsErrors(output: string): number {
+  return output.split("\n").filter((l: string) => l.includes("error TS")).length;
+}
+
+
 export function getProjectRoot(): string {
   return PROJECT_ROOT;
 }
@@ -215,10 +220,6 @@ function countDiffLines(slot: string, files: string[]): number {
     }
   }
   return total;
-}
-
-function countTsErrors(output: string): number {
-  return output.split("\n").filter((l: string) => l.includes("error TS")).length;
 }
 
 function runTypecheck(slot: string): { passed: boolean; output: string; errorCount: number } {
