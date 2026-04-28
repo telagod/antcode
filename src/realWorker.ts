@@ -4,7 +4,7 @@ import { createLocalOps } from "./tools";
 import { gatherInsights, formatInsightsForPrompt } from "./insights";
 import { AgentAssignment, buildFocusPrompt, recordDiscovery, formatDiscoveriesForPrompt } from "./collaboration";
 import path from "node:path";
-import { createAgentRuntime, cacheKeyForTask } from "./runtime";
+import { createAgentRuntime, cacheKeyForTask, formatRuntimeSummary } from "./runtime";
 import type { AgentRunResult } from "./runtime";
 
 let attemptCounter = 0;
@@ -99,6 +99,7 @@ export async function realAttempt(
       const u = result.totalUsage;
       const cacheRate = u.input_tokens ? (u.cached_tokens / u.input_tokens * 100).toFixed(1) : "0";
       console.log(`    tokens: in=${u.input_tokens} out=${u.output_tokens} cached=${u.cached_tokens} (${cacheRate}%)`);
+      if (result.telemetry) console.log(`    ${formatRuntimeSummary(result.telemetry)}`);
     } catch (e) {
       return fallbackResult(id, key, genome, (e as Error).message.slice(0, 200));
     }
@@ -172,6 +173,7 @@ export async function realAttempt(
         ...result.notes,
         `artifact:${artifact.id}`,
         `tokens:in=${result.totalUsage.input_tokens},out=${result.totalUsage.output_tokens},cached=${result.totalUsage.cached_tokens}`,
+        ...(result.telemetry ? [formatRuntimeSummary(result.telemetry)] : []),
       ],
     };
 

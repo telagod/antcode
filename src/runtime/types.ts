@@ -1,4 +1,5 @@
 import type { AllOps } from "../tools";
+import type { RuntimeTelemetry } from "./observability";
 
 export interface TokenUsage {
   input_tokens: number;
@@ -19,6 +20,7 @@ export interface AgentRunResult {
   totalUsage: TokenUsage;
   filesChanged: string[];
   bashResults: string[];
+  telemetry?: RuntimeTelemetry;
 }
 
 export interface AgentRuntime {

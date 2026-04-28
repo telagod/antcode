@@ -1,6 +1,6 @@
 # 11. Productization Roadmap
 
-AntCode v0.8.0 proves the first clean runtime boundary on top of pi-agent-core while preserving the safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
+AntCode v0.8.1 hardens the clean pi-agent-core runtime boundary with observability, stricter timeout behavior, and productized artifact review while preserving the safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
 
 ## Product Thesis
 
@@ -110,7 +110,7 @@ Goal: make AntCode a reliable CLI product base.
 
 Deliverables:
 - Passing typecheck and smoke tests
-- Current README reflects v0.8.0 behavior
+- Current README reflects v0.8.1 behavior
 - Product roadmap documented
 - No committed default LLM API key
 - CLI report/help version corrected
@@ -149,7 +149,7 @@ Still pending for the safety line:
 - stronger artifact status transitions
 - workspace config and retention policy
 
-## v0.8.0 Milestone: Runtime Boundary Cleanup
+## v0.8.x Milestone: Runtime Boundary Cleanup
 
 Goal: stop spending AntCode effort on non-core provider/tool-loop compatibility.
 
@@ -159,6 +159,9 @@ Deliverables:
 - Removed native Responses/OpenAI SDK/AI SDK runtime forks
 - Workbench lifecycle cap and cleanup guard
 - Runtime contract test
+- Runtime observability summary for tool calls, assistant messages, blocked tools, elapsed time, and timeout status
+- Harder abort path with timeout + abort grace window
+- Productized artifact review output with status summary, patch preview, and suggested next command
 
 ## v0.9.0 Milestone: Local Service Mode
 

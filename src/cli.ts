@@ -36,6 +36,8 @@ import { hashExperienceKey, sampleGenome, samplingTable } from "./sampler";
 import { decideTournament } from "./tournament";
 import { crossover } from "./crossover";
 import { assignFocusAreas } from "./collaboration";
+import fs from "node:fs";
+import path from "node:path";
 
 const root = process.cwd();
 const CONCURRENCY = Number(process.env.ANTCODE_CONCURRENCY ?? 3);
@@ -537,7 +539,7 @@ function showReport(): void {
   }
 
   console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║       AntCode v0.8.0 Experiment Report   ║");
+  console.log("║       AntCode v0.8.1 Experiment Report   ║");
   console.log("╚══════════════════════════════════════════╝\n");
 
   console.log("── Overview ──");
@@ -576,21 +578,54 @@ function showReport(): void {
   console.table(rows);
 }
 
+function statusLabel(status: string): string {
+  if (status === "pending_review") return "🟡 pending_review";
+  if (status === "merged") return "🟢 merged";
+  if (status === "rejected") return "⚪ rejected";
+  if (status === "rolled_back") return "↩️ rolled_back";
+  return status;
+}
+
+function readPreview(relPath: string, maxLines = 80): string[] {
+  const full = path.resolve(root, relPath);
+  try {
+    return fs.readFileSync(full, "utf8").split("\n").slice(0, maxLines);
+  } catch {
+    return [];
+  }
+}
+
 function reviewAttempt(id?: string): void {
   if (!id) {
-    const artifacts = listPatchArtifacts();
+    const artifacts = listPatchArtifacts().sort((a, b) => b.created_at.localeCompare(a.created_at));
     if (!artifacts.length) {
       console.log("No patch artifacts yet.");
+      console.log("\nNext: npx tsx src/cli.ts run-experiment 1 --real --no-auto-merge");
       return;
     }
-    console.table(artifacts.map((a) => ({
+
+    const counts = artifacts.reduce<Record<string, number>>((acc, artifact) => {
+      acc[artifact.status] = (acc[artifact.status] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    console.log("\n╔══════════════════════════════════════════╗");
+    console.log("║          Patch Artifact Review          ║");
+    console.log("╚══════════════════════════════════════════╝\n");
+    console.log(`Total: ${artifacts.length}  Pending: ${counts.pending_review ?? 0}  Merged: ${counts.merged ?? 0}  Rejected: ${counts.rejected ?? 0}  Rolled back: ${counts.rolled_back ?? 0}`);
+    console.log("\nRecent artifacts:");
+    console.table(artifacts.slice(0, 20).map((a) => ({
       id: a.id,
       attempt: a.attempt_id,
-      status: a.status,
+      status: statusLabel(a.status),
       files: a.files_changed.length,
       diff: a.diff_lines,
       created: a.created_at,
     })));
+    const firstPending = artifacts.find((artifact) => artifact.status === "pending_review");
+    if (firstPending) {
+      console.log(`Next: npx tsx src/cli.ts review-attempt ${firstPending.id}`);
+    }
     return;
   }
 
@@ -600,18 +635,47 @@ function reviewAttempt(id?: string): void {
     return;
   }
 
-  console.log(`Patch Artifact: ${artifact.id}`);
-  console.log(`Attempt:        ${artifact.attempt_id}`);
-  console.log(`Status:         ${artifact.status}`);
-  console.log(`Created:        ${artifact.created_at}`);
-  console.log(`Files:          ${artifact.files_changed.join(", ") || "-"}`);
-  console.log(`Diff lines:     ${artifact.diff_lines}`);
-  console.log(`Patch:          ${artifact.patch_file}`);
-  console.log(`Files dir:      ${artifact.files_dir}`);
-  console.log(`Verify log:     ${artifact.verification_log}`);
+  console.log("\n╔══════════════════════════════════════════╗");
+  console.log("║             Artifact Detail             ║");
+  console.log("╚══════════════════════════════════════════╝\n");
+  console.log(`ID:        ${artifact.id}`);
+  console.log(`Attempt:   ${artifact.attempt_id}`);
+  console.log(`Status:    ${statusLabel(artifact.status)}`);
+  console.log(`Created:   ${artifact.created_at}`);
+  if (artifact.approved_at) console.log(`Approved:  ${artifact.approved_at}`);
+  if (artifact.rejected_at) console.log(`Rejected:  ${artifact.rejected_at}`);
+  if (artifact.rolled_back_at) console.log(`Rollback:  ${artifact.rolled_back_at}`);
+  console.log(`Diff:      ${artifact.diff_lines} lines`);
+
+  console.log("\nChanged files:");
+  console.table(artifact.files_changed.map((file) => ({ file })));
+
+  console.log("Paths:");
+  console.log(`  Patch:      ${artifact.patch_file}`);
+  console.log(`  Files:      ${artifact.files_dir}`);
+  console.log(`  Verify log: ${artifact.verification_log}`);
+  if (artifact.backup_dir) console.log(`  Backup:     ${artifact.backup_dir}`);
+
+  const preview = readPreview(artifact.patch_file, 80);
+  if (preview.length) {
+    console.log("\nPatch preview:");
+    console.log(preview.join("\n"));
+    if (preview.length === 80) console.log("... preview truncated; open patch file for full diff");
+  }
+
   if (artifact.notes.length) {
     console.log("\nNotes:");
-    for (const note of artifact.notes.slice(0, 8)) console.log(`- ${note}`);
+    for (const note of artifact.notes.slice(0, 12)) console.log(`- ${note}`);
+  }
+
+  console.log("\nSuggested commands:");
+  if (artifact.status === "pending_review") {
+    console.log(`  npx tsx src/cli.ts approve-attempt ${artifact.id}`);
+    console.log(`  npx tsx src/cli.ts reject-attempt ${artifact.id}`);
+  } else if (artifact.status === "merged") {
+    console.log(`  npx tsx src/cli.ts rollback-attempt ${artifact.id}`);
+  } else {
+    console.log("  No action required.");
   }
 }
 
@@ -707,7 +771,7 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
   if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.8.0\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  console.log("AntCode v0.8.1\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);

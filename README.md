@@ -9,7 +9,7 @@ AntCode is an autonomous code-improvement system that learns which coding strate
 [![Release](https://img.shields.io/github/v/release/telagod/antcode?style=flat-square)](https://github.com/telagod/antcode/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Status](https://img.shields.io/badge/status-v0.8.0%20pi%20runtime-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.8.0)
+[![Status](https://img.shields.io/badge/status-v0.8.1%20runtime%20observability-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.8.1)
 
 </div>
 
@@ -31,9 +31,9 @@ StrategyGenome
   -> Better Sampling Policy
 ```
 
-## What is new in v0.8.0
+## What is new in v0.8.1
 
-v0.8.0 is the runtime cleanup release. AntCode now keeps one clean agent runtime path on `pi-agent-core` instead of maintaining native Responses, OpenAI SDK, and AI SDK tool-loop forks.
+v0.8.1 hardens the pi runtime path with observability, stricter timeout/abort behavior, and a more productized artifact review flow.
 
 ```text
 AntCode core
@@ -42,7 +42,7 @@ AntCode core
   -> provider compatibility and tool execution plumbing
 ```
 
-This keeps AntCode focused on its core product: learning which code-improvement strategies work and applying them safely.
+This keeps AntCode focused on its core product while making real runs easier to debug and patch artifacts easier to approve safely.
 
 ## Features
 
@@ -199,6 +199,7 @@ Treat this as product data. It explains why a strategy was selected, how it perf
 | `ANTCODE_LLM_MODEL` | `gpt-5.4` | Model used by real worker and task generation |
 | `ANTCODE_MAX_WORKBENCHES` | `4` | Safety cap for simultaneously active workbench slots |
 | `ANTCODE_AGENT_TIMEOUT_MS` | `45000` | Per-attempt pi agent timeout |
+| `ANTCODE_AGENT_ABORT_GRACE_MS` | `1500` | Extra grace window after abort before a real run is treated as timed out |
 | `ANTCODE_TASKGEN_TIMEOUT_MS` | `30000` | Dynamic task generation timeout |
 | `ANTCODE_CONCURRENCY` | `3` | Parallel real workers per batch |
 
@@ -221,7 +222,7 @@ v0.8 focuses on runtime boundary cleanup and release hygiene rather than a new p
 
 ## Roadmap
 
-- **v0.8.x** — harden pi runtime observability, artifact status transitions, and workspace configuration.
+- **v0.8.x** — harden pi runtime observability, timeout handling, artifact review, and workspace configuration.
 - **v0.9** — local service mode with HTTP API and background queue.
 - **v1.0** — web console for runs, strategies, costs, patches, and failure modes.
 - **v1.1** — safe repository maintenance product with policy packs, approval gates, and audit logs.
@@ -230,8 +231,8 @@ See [`docs/11_productization_roadmap.md`](docs/11_productization_roadmap.md).
 
 ## Release
 
-- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.8.0>
-- Package artifact: [`antcode-0.8.0.tgz`](https://github.com/telagod/antcode/releases/download/v0.8.0/antcode-0.8.0.tgz)
+- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.8.1>
+- Package artifact: [`antcode-0.8.1.tgz`](https://github.com/telagod/antcode/releases/download/v0.8.1/antcode-0.8.1.tgz)
 
 ## Security model
 
