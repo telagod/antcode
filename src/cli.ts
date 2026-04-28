@@ -300,6 +300,12 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
   let genomes = readJsonl<StrategyGenome>(storage.genomesFile);
   let mutationIndex = readJsonl<MutationEvent>(storage.mutationFile).length + 1;
 
+  if (genomes.length === 0) {
+    console.log("  No strategy genomes found. Run `npm run init-state` before starting experiments.");
+    console.log("  No workbench was created.");
+    return;
+  }
+
   let activeTasks = [...realTasks];
   if (useReal) {
     console.log("  generating dynamic tasks...");
@@ -329,6 +335,11 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
         const genome = pickGenomeForKey(genomes, key) ?? genomes.find((g) => g.status === "active") ?? genomes[0];
         if (!genome) continue;
         jobs.push({ key, genome, slotId: slotCounter++, task, assignment: assignments[j] });
+      }
+
+      if (jobs.length === 0) {
+        console.log("  No runnable jobs could be created from the current task/genome state; stopping to avoid workbench churn.");
+        return;
       }
 
       const results = await Promise.allSettled(
@@ -539,7 +550,7 @@ function showReport(): void {
   }
 
   console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║       AntCode v0.8.1 Experiment Report   ║");
+  console.log("║       AntCode v0.8.2 Experiment Report   ║");
   console.log("╚══════════════════════════════════════════╝\n");
 
   console.log("── Overview ──");
@@ -771,7 +782,7 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
   if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.8.1\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  console.log("AntCode v0.8.2\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);

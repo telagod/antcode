@@ -1,6 +1,6 @@
 # 11. Productization Roadmap
 
-AntCode v0.8.1 hardens the clean pi-agent-core runtime boundary with observability, stricter timeout behavior, and productized artifact review while preserving the safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
+AntCode v0.8.2 hardens the clean pi-agent-core runtime boundary with observability, a practical 90s real-run timeout, empty-state fail-fast behavior, and productized artifact review while preserving the safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
 
 ## Product Thesis
 
@@ -110,7 +110,7 @@ Goal: make AntCode a reliable CLI product base.
 
 Deliverables:
 - Passing typecheck and smoke tests
-- Current README reflects v0.8.1 behavior
+- Current README reflects v0.8.2 behavior
 - Product roadmap documented
 - No committed default LLM API key
 - CLI report/help version corrected
@@ -161,6 +161,7 @@ Deliverables:
 - Runtime contract test
 - Runtime observability summary for tool calls, assistant messages, blocked tools, elapsed time, and timeout status
 - Harder abort path with timeout + abort grace window
+- More realistic 90s default real-run timeout based on the 18-round local stability run
 - Productized artifact review output with status summary, patch preview, and suggested next command
 
 ## v0.9.0 Milestone: Local Service Mode

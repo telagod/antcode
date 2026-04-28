@@ -1,7 +1,7 @@
 {
   "name": "antcode",
-  "version": "0.8.1",
-  "description": "AntCode v0.8.1: pi runtime observability, hard timeout guard, and artifact review UX",
+  "version": "0.8.2",
+  "description": "AntCode v0.8.2: wider real-run timeout and workbench churn guard",
   "type": "module",
   "private": true,
   "files": [
@@ -28,7 +28,7 @@
     "show:genomes": "tsx src/cli.ts show-genomes",
     "show:mutations": "tsx src/cli.ts show-mutations",
     "show:health": "tsx src/cli.ts show-health",
-    "test": "node tests/index-crossover-export.test.mjs && tsx tests/storage-error-handling.test.ts && tsx tests/artifact-lifecycle.test.ts && tsx tests/runtime-abstraction.test.ts && tsx tests/runtime-observability.test.ts && tsx tests/workbench-guard.test.ts",
+    "test": "node tests/index-crossover-export.test.mjs && tsx tests/storage-error-handling.test.ts && tsx tests/artifact-lifecycle.test.ts && tsx tests/empty-genomes-guard.test.ts && tsx tests/runtime-abstraction.test.ts && tsx tests/runtime-observability.test.ts && tsx tests/workbench-guard.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

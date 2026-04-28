@@ -9,7 +9,7 @@ import { SYSTEM_PROMPT } from "./prompt";
 import { createRuntimeTelemetry } from "./observability";
 import type { AgentRunInput, AgentRunResult, AgentRuntime, TokenUsage } from "./types";
 
-const AGENT_TIMEOUT_MS = Number(process.env.ANTCODE_AGENT_TIMEOUT_MS ?? 45000);
+const AGENT_TIMEOUT_MS = Number(process.env.ANTCODE_AGENT_TIMEOUT_MS ?? 90000);
 const AGENT_ABORT_GRACE_MS = Number(process.env.ANTCODE_AGENT_ABORT_GRACE_MS ?? 1500);
 
 function toUsage(usage: unknown): TokenUsage {
