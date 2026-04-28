@@ -1,7 +1,7 @@
 {
   "name": "antcode",
-  "version": "0.7.0",
-  "description": "AntCode v0.7.0: Safe self-evolving code agent with patch artifacts, review gates, and rollback",
+  "version": "0.7.1",
+  "description": "AntCode v0.7.1: Root package layout with safe self-evolving patch artifacts",
   "type": "module",
   "private": true,
   "files": [
@@ -11,11 +11,14 @@
     "templates",
     "examples",
     "tests",
+    "scripts",
     "README.md",
+    "LICENSE",
     "VERSION.md",
     "tsconfig.json"
   ],
   "scripts": {
+    "init-state": "node scripts/init-state.mjs",
     "demo": "tsx src/cli.ts run-experiment 8",
     "demo:real": "tsx src/cli.ts run-experiment 12 --real",
     "run-experiment": "tsx src/cli.ts run-experiment",

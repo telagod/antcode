@@ -7,8 +7,9 @@ import { PatchArtifactManifest } from "./types";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const WORKBENCH_BASE = path.resolve(PROJECT_ROOT, "..");
 const ARTIFACTS_DIR = path.join(PROJECT_ROOT, ".antcode", "artifacts");
+const WORKSPACE_FILES = ["package.json", "package-lock.json", "tsconfig.json"] as const;
+const WORKSPACE_DIRS = ["src", "tests", "schemas", "templates"] as const;
 
 interface ArtifactBackupEntry {
   file: string;
@@ -91,8 +92,7 @@ function ensureFileExists(targetPath: string, context: string): void {
 }
 
 export function createSlot(slotId: number): string {
-  const dir = path.join(WORKBENCH_BASE, `workbench_${slotId}`);
-  const base = path.join(WORKBENCH_BASE, "workbench");
+  const dir = path.join(PROJECT_ROOT, `workbench_${slotId}`);
 
   // always start fresh
   if (pathExists(dir)) {
@@ -107,13 +107,26 @@ export function createSlot(slotId: number): string {
     }
   }
 
-  ensureDirectoryExists(base, `Failed to create slot ${slotId}: base workbench`);
-
   try {
-    execSync(`cp -r "${base}" "${dir}"`, { stdio: "pipe" });
+    fs.mkdirSync(dir, { recursive: true });
+    for (const file of WORKSPACE_FILES) {
+      const src = path.join(PROJECT_ROOT, file);
+      const dst = path.join(dir, file);
+      if (pathExists(src)) fs.copyFileSync(src, dst);
+    }
+    for (const sourceDir of WORKSPACE_DIRS) {
+      const src = path.join(PROJECT_ROOT, sourceDir);
+      const dst = path.join(dir, sourceDir);
+      if (pathExists(src)) fs.cpSync(src, dst, { recursive: true });
+    }
+    const nodeModules = path.join(PROJECT_ROOT, "node_modules");
+    const slotNodeModules = path.join(dir, "node_modules");
+    if (pathExists(nodeModules) && !pathExists(slotNodeModules)) {
+      fs.symlinkSync(nodeModules, slotNodeModules, "dir");
+    }
   } catch (e) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* cleanup */ }
-    throw new Error(formatExecError(`Failed to create slot ${slotId}`, e));
+    throw new Error(formatFsError(`Failed to create slot ${slotId}`, e));
   }
 
   ensureDirectoryExists(dir, `Failed to create slot ${slotId}: destination directory was not created`);

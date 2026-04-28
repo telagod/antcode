@@ -288,6 +288,12 @@ let slotCounter = 0;
 async function runExperiment(iterations = 8, useReal = false, autoMerge = true): Promise<void> {
   const mode = useReal ? `real (LLM, concurrency=${CONCURRENCY})` : "mock";
   console.log(`starting ${iterations} iterations in ${mode} mode`);
+  if (useReal && !process.env.ANTCODE_LLM_API_KEY) {
+    console.log("  ANTCODE_LLM_API_KEY is required for real mode. No workbench was created.");
+    console.log("  For a no-LLM mechanics check, run: npm run demo");
+    return;
+  }
+
   const policy = loadPolicy();
   let genomes = readJsonl<StrategyGenome>(storage.genomesFile);
   let mutationIndex = readJsonl<MutationEvent>(storage.mutationFile).length + 1;
@@ -531,7 +537,7 @@ function showReport(): void {
   }
 
   console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║       AntCode v0.7.0 Experiment Report   ║");
+  console.log("║       AntCode v0.7.1 Experiment Report   ║");
   console.log("╚══════════════════════════════════════════╝\n");
 
   console.log("── Overview ──");
@@ -701,7 +707,7 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
   if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.7.0\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  console.log("AntCode v0.7.1\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);

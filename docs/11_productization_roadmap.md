@@ -1,6 +1,6 @@
 # 11. Productization Roadmap
 
-AntCode v0.7.0 proves the first safe self-modification loop. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
+AntCode v0.7.1 proves the first safe self-modification loop. The repository now follows a root-package layout: package metadata, source, tests, docs, schemas, templates, scripts, and examples live at the repository root. Productization means turning that loop into a reliable developer product with clear boundaries, observability, safety controls, and repeatable operations.
 
 ## Product Thesis
 
@@ -97,7 +97,7 @@ Goal: make AntCode a reliable CLI product base.
 
 Deliverables:
 - Passing typecheck and smoke tests
-- Current README reflects v0.7.0 behavior
+- Current README reflects v0.7.1 behavior
 - Product roadmap documented
 - No committed default LLM API key
 - CLI report/help version corrected
@@ -109,7 +109,7 @@ Non-goals:
 - Multi-tenant auth
 - Database migration
 
-## v0.7.0 Milestone: Safe Workspace Execution
+## v0.7.1 Milestone: Safe Workspace Execution
 
 Goal: make attempts reversible and reproducible.
 

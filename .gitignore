@@ -1,15 +1,13 @@
 node_modules/
 dist/
+coverage/
+
+# Runtime state and local workspaces
+.antcode/
 workbench/
 workbench_*/
-.antcode/attempts.jsonl
-.antcode/reward-bundles.jsonl
-.antcode/strategy-pheromones.jsonl
-.antcode/negative-pheromones.jsonl
-.antcode/experience-key-health.jsonl
-.antcode/mutation-events.jsonl
-.antcode/discoveries.jsonl
-*.output
-.ace-tool/
 
+# Local tooling / generated files
+.ace-tool/
+*.output
 *.tgz

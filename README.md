@@ -9,7 +9,7 @@ AntCode is an autonomous code-improvement system that learns which coding strate
 [![Release](https://img.shields.io/github/v/release/telagod/antcode?style=flat-square)](https://github.com/telagod/antcode/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Status](https://img.shields.io/badge/status-v0.7.0%20safe%20self--modification-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.7.0)
+[![Status](https://img.shields.io/badge/status-v0.7.1%20safe%20self--modification-purple?style=flat-square)](https://github.com/telagod/antcode/releases/tag/v0.7.1)
 
 </div>
 
@@ -31,9 +31,9 @@ StrategyGenome
   -> Better Sampling Policy
 ```
 
-## What is new in v0.7.0
+## What is new in v0.7.1
 
-v0.7.0 is the first safe self-modification release. AntCode can now generate patch artifacts without immediately writing them back to the source tree.
+v0.7.1 is the first safe self-modification release. AntCode can now generate patch artifacts without immediately writing them back to the source tree.
 
 ```text
 real run --no-auto-merge
@@ -60,8 +60,9 @@ This is the important bridge between “an assistant edits the repo” and “An
 
 ```bash
 git clone https://github.com/telagod/antcode.git
-cd antcode/antcode_v0_5_0
+cd antcode
 npm install
+npm run init-state
 npm run typecheck
 npm test
 npm run report
@@ -220,12 +221,12 @@ v0.7 focuses on safety and release hygiene rather than a new performance benchma
 - **v0.9** — web console for runs, strategies, costs, patches, and failure modes.
 - **v1.0** — safe repository maintenance product with policy packs, approval gates, and audit logs.
 
-See [`antcode_v0_5_0/docs/11_productization_roadmap.md`](antcode_v0_5_0/docs/11_productization_roadmap.md).
+See [`docs/11_productization_roadmap.md`](docs/11_productization_roadmap.md).
 
 ## Release
 
-- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.7.0>
-- Package artifact: [`antcode-0.7.0.tgz`](https://github.com/telagod/antcode/releases/download/v0.7.0/antcode-0.7.0.tgz)
+- GitHub Release: <https://github.com/telagod/antcode/releases/tag/v0.7.1>
+- Package artifact: [`antcode-0.7.1.tgz`](https://github.com/telagod/antcode/releases/download/v0.7.1/antcode-0.7.1.tgz)
 
 ## Security model
 
@@ -242,12 +243,15 @@ AntCode is intentionally conservative about self-modification:
 ```text
 antcode/
 ├── README.md
-├── antcode_v0_5_0/        # current package line, released as antcode@0.7.0
-│   ├── src/
-│   ├── docs/
-│   ├── schemas/
-│   ├── templates/
-│   └── tests/
+├── package.json
+├── src/
+├── tests/
+├── docs/
+├── schemas/
+├── templates/
+├── examples/
+│   └── state/v0.7.0/      # seed .antcode state
+├── scripts/
 └── archives/              # historical versions
 ```
 

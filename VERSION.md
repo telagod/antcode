@@ -1,4 +1,4 @@
-# Version: AntCode v0.7.0
+# Version: AntCode v0.7.1
 
 ## 名称
 
@@ -6,12 +6,12 @@
 
 ## 版本定位
 
-v0.7.0 是 AntCode 从“能自主改代码”走向“能安全自改”的版本。
+v0.7.1 是 AntCode 从“能自主改代码”走向“能安全自改”的版本。
 
 ```text
 v0.5.0: LLM 自主探索 + tool loop + 多 agent 协作
 v0.6.0: 产品化地基，typecheck/test/doc/version hygiene
-v0.7.0: patch artifact + review gate + approve/reject/rollback
+v0.7.1: patch artifact + review gate + approve/reject/rollback
 ```
 
 ## 核心问题
@@ -22,7 +22,7 @@ AntCode 什么时候能自己接命令、自己改自己，而不需要外部 Co
 答案：当每次自改都能隔离生成、人工审阅、明确批准、可拒绝、可回滚。
 ```
 
-## v0.7.0 新增能力
+## v0.7.1 新增能力
 
 ### 1. Safe Self-Modification Path
 
@@ -59,13 +59,13 @@ npx tsx src/cli.ts rollback-attempt <attempt_id|artifact_id>
 
 ### 4. Release Hygiene
 
-- package version 升级到 `0.7.0`。
-- CLI help/report 文案同步到 v0.7.0。
+- package version 升级到 `0.7.1`。
+- CLI help/report 文案同步到 v0.7.1。
 - `npm run typecheck` 和 `npm test` 作为发布门禁。
 
 ## 安全边界
 
-v0.7.0 仍不建议默认完全自动合并。推荐路径是：
+v0.7.1 仍不建议默认完全自动合并。推荐路径是：
 
 ```text
 AntCode 生成 artifact → 小宝 review → approve → 必要时 rollback
