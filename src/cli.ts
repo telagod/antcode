@@ -37,6 +37,7 @@ import { hashExperienceKey, sampleGenome, samplingTable } from "./sampler";
 import { decideTournament } from "./tournament";
 import { crossover } from "./crossover";
 import { WorkerPool } from "./worker/pool";
+import { startDashboard } from "./tui/dashboard";
 import { assignFocusAreas } from "./collaboration";
 import fs from "node:fs";
 import path from "node:path";
@@ -307,8 +308,13 @@ function logMutation(round: number, parentId: string, childId: string, failureMo
 let cliAttemptCounter = 0;
 let slotCounter = 0;
 
-async function runExperiment(iterations = 8, useReal = false, autoMerge = true): Promise<void> {
+async function runExperiment(iterations = 8, useReal = false, autoMerge = true, noDashboard = false): Promise<void> {
   const mode = useReal ? `real (LLM, concurrency=${CONCURRENCY})` : "mock";
+  const useDashboard = !noDashboard && !!process.stdout.isTTY && !process.env.CI;
+  let dashboard: ReturnType<typeof startDashboard> | undefined;
+  if (useDashboard) {
+    dashboard = startDashboard(root, iterations, mode);
+  }
   console.log(`starting ${iterations} iterations in ${mode} mode`);
   if (useReal && !process.env.ANTCODE_LLM_API_KEY) {
     console.log("  ANTCODE_LLM_API_KEY is required for real mode. No workbench was created.");
@@ -502,6 +508,7 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
   }
   console.log(`ran ${iterations} experiment iterations`);
   globalBuffer.flushAll();
+  if (dashboard) dashboard.stop();
 }
 
 function showGenomes(): void {
