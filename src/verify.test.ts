@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { mockAttempt } from "./index.ts";
-import { captureBaseline } from "./verify.ts";
+import { captureBaseline, readSlotFile } from "./verify.ts";
 import { formatDiscoveriesForPrompt, getRecentDiscoveries, recordDiscovery, withDiscoveryFileForTest } from "./collaboration.ts";
 import { ExperienceKey, StrategyGenome } from "./types.ts";
 
@@ -127,3 +127,15 @@ test("formatDiscoveriesForPrompt ignores malformed discovery rows and still rend
   });
 });
 
+test("readSlotFile returns undefined for missing file and content for existing file", () => {
+  const slot = fs.mkdtempSync(path.join(os.tmpdir(), "verify-read-slot-"));
+  const missing = readSlotFile(slot, "missing.txt");
+  assert.equal(missing, undefined);
+
+  const existingPath = path.join(slot, "existing.txt");
+  fs.writeFileSync(existingPath, "hello", "utf8");
+  const existing = readSlotFile(slot, "existing.txt");
+  assert.equal(existing, "hello");
+
+  fs.rmSync(slot, { recursive: true, force: true });
+});

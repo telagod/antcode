@@ -41,18 +41,25 @@ function scanSourceFiles(): Record<string, string> {
 }
 
 function buildScanPrompt(files: Record<string, string>): { instructions: string; input: string } {
+  const hasTestFramework = fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/vitest")) ||
+    fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/jest"));
+
   const fileSummaries = Object.entries(files).map(([name, content]) => {
     const lines = content.split("\n");
     const exports = lines.filter((l) => l.trim().startsWith("export ")).slice(0, 10);
     return `### ${name} (${lines.length} lines)\n${exports.join("\n")}`;
   }).join("\n\n");
 
+  const focusAreas = hasTestFramework
+    ? "missing error handling, missing tests, code that could be cleaner, type safety gaps, dead code"
+    : "missing error handling, code that could be cleaner, type safety gaps, dead code, missing documentation, duplicate logic";
+
   return {
     instructions: `You are a code quality analyst. You scan TypeScript source files and identify concrete improvement tasks.
 
 Respond with ONLY a JSON array (no markdown, no explanation). Each item:
 {
-  "goal_pattern": "add_cli_command | fix_type_error | refactor_module | add_test | fix_bug | improve_error_handling",
+  "goal_pattern": "add_cli_command | fix_type_error | refactor_module | add_test | fix_bug | improve_error_handling | remove_dead_code | add_documentation",
   "module_region": "string — which module area",
   "description": "string — specific task description, actionable",
   "target_files": ["src/file.ts"],
@@ -63,8 +70,9 @@ Respond with ONLY a JSON array (no markdown, no explanation). Each item:
 Rules:
 - Only suggest tasks that are concretely actionable on the given code
 - Max 5 tasks, sorted by priority
-- Focus on: missing error handling, missing tests, code that could be cleaner, type safety gaps, dead code
-- Do NOT suggest tasks that are already done`,
+- Focus on: ${focusAreas}
+- Do NOT suggest tasks that are already done
+${hasTestFramework ? "" : "- IMPORTANT: Do NOT suggest 'add_test' tasks — no test framework is installed in this project"}`,
     input: `## Source Files\n\n${fileSummaries}`,
   };
 }

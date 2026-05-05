@@ -206,14 +206,14 @@ export function getActiveSlotCount(): number {
   return activeSlots.size;
 }
 
-export function readSlotFile(slot: string, relPath: string): string | null {
+export function readSlotFile(slot: string, relPath: string): string | undefined {
   const full = path.join(slot, relPath);
-  if (!pathExists(full)) return null;
+  if (!pathExists(full)) return undefined;
 
   try {
     return fs.readFileSync(full, "utf8");
   } catch {
-    return null;
+    return undefined;
   }
 }
 
