@@ -2,13 +2,13 @@ import type { Model } from "@mariozechner/pi-ai";
 
 export const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
 export const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
-export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "gpt-5.4";
+export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "moonshotai/Kimi-K2.6";
 
-export function createPiModel(): Model<"openai-responses"> {
+export function createPiModel(): Model<"openai-completions"> {
   return {
     id: MODEL,
     name: MODEL,
-    api: "openai-responses",
+    api: "openai-completions",
     provider: "antcode-pi",
     baseUrl: BASE_URL,
     reasoning: false,
@@ -17,7 +17,6 @@ export function createPiModel(): Model<"openai-responses"> {
     contextWindow: 200000,
     maxTokens: 8192,
     compat: {
-      sendSessionIdHeader: true,
       supportsLongCacheRetention: true,
     },
   };
