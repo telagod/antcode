@@ -210,7 +210,7 @@ export function startDashboard(root: string, totalIterations: number, mode: stri
       state.negatives,
     );
     const lines = table.map((row) => {
-      const barLen = Math.round(row.probability * 20);
+      const barLen = Math.max(0, Math.min(20, Math.round(row.probability * 20)));
       const bar = "█".repeat(barLen) + "░".repeat(20 - barLen);
       const color = row.status === "active" ? "green" : row.status === "candidate" ? "yellow" : "red";
       return ` {${color}-fg}${row.id.slice(0, 30).padEnd(30)}{/} ${(row.probability * 100).toFixed(1).padStart(5)}% [${bar}]`;
