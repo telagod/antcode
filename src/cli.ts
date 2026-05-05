@@ -11,14 +11,15 @@ import {
   StrategyPheromone,
 } from "./types";
 import {
-  appendJsonl,
   antcodePath,
   overwriteJsonl,
   readJson,
   readJsonl,
+  writeJson,
+  globalBuffer,
 } from "./storage";
-import { buildRewardBundle } from "./reward";
-import { canMutate, mutateGenome } from "./mutation";
+import { buildRewardBundle, loadWeights } from "./reward/index";
+import { canMutate, mutateGenome, randomExplore } from "./mutation";
 import { mockAttempt } from "./simulator";
 import { realAttempt, runSharedRecon } from "./realWorker";
 import { realTasks } from "./tasks";
@@ -35,6 +36,7 @@ import { evaluateExperienceKeyHealth } from "./health";
 import { hashExperienceKey, sampleGenome, samplingTable } from "./sampler";
 import { decideTournament } from "./tournament";
 import { crossover } from "./crossover";
+import { WorkerPool } from "./worker/pool";
 import { assignFocusAreas } from "./collaboration";
 import fs from "node:fs";
 import path from "node:path";
@@ -81,6 +83,7 @@ function loadPolicy(): PolicyConfig {
       boundary_violation: "no_increase",
     },
     evaporation: { positive: 0.05, negative: 0.08 },
+    exploration_rate: 0.05,
   });
 }
 
@@ -142,7 +145,7 @@ function updatePheromone(reward: RewardBundle): void {
     existing.updated_at = new Date().toISOString();
     overwriteJsonl(storage.positiveFile, rows);
   } else {
-    appendJsonl(storage.positiveFile, {
+    globalBuffer.appendJsonl(storage.positiveFile, {
       experience_key_hash: reward.experience_key_hash,
       strategy_genome_id: reward.strategy_genome_id,
       positive: reward.reward,
@@ -169,7 +172,7 @@ function updateNegative(reward: RewardBundle): void {
     existing.updated_at = new Date().toISOString();
     overwriteJsonl(storage.negativeFile, rows);
   } else {
-    appendJsonl(storage.negativeFile, {
+    globalBuffer.appendJsonl(storage.negativeFile, {
       experience_key_hash: reward.experience_key_hash,
       strategy_genome_id: reward.strategy_genome_id,
       reason: reward.failure_mode,
@@ -243,17 +246,19 @@ function runTournaments(genomes: StrategyGenome[], policy: PolicyConfig): void {
 function pickGenomeForKey(genomes: StrategyGenome[], key: ExperienceKey): StrategyGenome | undefined {
   const positives = readJsonl<StrategyPheromone>(storage.positiveFile);
   const negatives = readJsonl<NegativePheromone>(storage.negativeFile);
+  const totalSamplesAll = positives.reduce((s, p) => s + p.sample_count, 0);
   try {
-    return sampleGenome(genomes, key, positives, negatives);
+    return sampleGenome(genomes, key, positives, negatives, undefined, true, false, totalSamplesAll);
   } catch {
     return undefined;
   }
 }
 
 function persistAttemptAndReward(attempt: Attempt): RewardBundle {
-  const reward = buildRewardBundle(attempt);
-  appendJsonl(storage.attemptsFile, attempt);
-  appendJsonl(storage.rewardsFile, reward);
+  const weights = loadWeights(root);
+  const reward = buildRewardBundle(attempt, weights);
+  globalBuffer.appendJsonl(storage.attemptsFile, attempt);
+  globalBuffer.appendJsonl(storage.rewardsFile, reward);
   updatePheromone(reward);
   updateNegative(reward);
   return reward;
@@ -267,16 +272,31 @@ function maybeMutateGenome(
 ): number {
   const rewards = readJsonl<RewardBundle>(storage.rewardsFile);
   const decision = canMutate(genome, rewards, policy);
-  if (!(decision.ok && decision.failureMode && decision.attempts)) return mutationIndex;
 
-  const attempts = readJsonl<Attempt>(storage.attemptsFile).filter((a) => decision.attempts!.includes(a.id));
-  const { child, event } = mutateGenome(genome, decision.failureMode, attempts, mutationIndex, decision.failureModes);
-  if (!genomes.some((g) => g.id === child.id)) {
-    genomes.push(child);
-    appendJsonl(storage.genomesFile, child);
-    appendJsonl(storage.mutationFile, event);
+  if (decision.ok && decision.failureMode && decision.attempts) {
+    const attempts = readJsonl<Attempt>(storage.attemptsFile).filter((a) => decision.attempts!.includes(a.id));
+    const { child, event } = mutateGenome(genome, decision.failureMode, attempts, mutationIndex, decision.failureModes);
+    if (!genomes.some((g) => g.id === child.id)) {
+      genomes.push(child);
+      globalBuffer.appendJsonl(storage.genomesFile, child);
+      globalBuffer.appendJsonl(storage.mutationFile, event);
+    }
+    return mutationIndex + 1;
   }
-  return mutationIndex + 1;
+
+  // ── Random exploration: even if threshold not met, occasionally mutate ──
+  const exploreRate = policy.exploration_rate ?? 0.05;
+  if (Math.random() < exploreRate) {
+    const explore = randomExplore(genome, mutationIndex);
+    if (explore && !genomes.some((g) => g.id === explore.child.id)) {
+      genomes.push(explore.child);
+      globalBuffer.appendJsonl(storage.genomesFile, explore.child);
+      globalBuffer.appendJsonl(storage.mutationFile, explore.event);
+      return mutationIndex + 1;
+    }
+  }
+
+  return mutationIndex;
 }
 
 function logMutation(round: number, parentId: string, childId: string, failureMode: string | undefined, failureModes?: string[]): void {
@@ -327,14 +347,14 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
       const batchSize = Math.min(CONCURRENCY, iterations - i);
       await runSharedRecon(slotCounter++);
       const assignments = assignFocusAreas(batchSize);
-      const jobs: Array<{ key: ExperienceKey; genome: StrategyGenome; slotId: number; task: typeof realTasks[0] | undefined; assignment: typeof assignments[0] }> = [];
+      const jobs: Array<{ key: ExperienceKey; genome: StrategyGenome; task: typeof realTasks[0] | undefined; assignment: typeof assignments[0] }> = [];
 
       for (let j = 0; j < batchSize; j++) {
         const task = activeTasks[Math.floor(Math.random() * activeTasks.length)];
         const key = task.key;
         const genome = pickGenomeForKey(genomes, key) ?? genomes.find((g) => g.status === "active") ?? genomes[0];
         if (!genome) continue;
-        jobs.push({ key, genome, slotId: slotCounter++, task, assignment: assignments[j] });
+        jobs.push({ key, genome, task, assignment: assignments[j] });
       }
 
       if (jobs.length === 0) {
@@ -342,13 +362,27 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
         return;
       }
 
-      const results = await Promise.allSettled(
-        jobs.map((j) => realAttempt(j.key, j.genome, j.task, j.slotId, autoMerge, j.assignment)),
-      );
+      const pool = new WorkerPool(CONCURRENCY);
+      const jobResults = new Map<number, { status: "fulfilled"; value: { attempt: Attempt; mergeFiles?: Record<string, string> } } | { status: "rejected"; reason: unknown }>();
 
-      for (let j = 0; j < results.length; j++) {
-        const r = results[j];
+      for (let j = 0; j < jobs.length; j++) {
         const job = jobs[j];
+        pool.submit<{ key: ExperienceKey; genome: StrategyGenome; task: typeof realTasks[0] | undefined; assignment: typeof assignments[0] }, { attempt: Attempt; mergeFiles?: Record<string, string> }>(
+          `job_${j}`,
+          job,
+          async (payload, slotId) => {
+            return realAttempt(payload.key, payload.genome, payload.task, slotId, autoMerge, payload.assignment);
+          },
+        )
+          .then((result) => { jobResults.set(j, { status: "fulfilled", value: result }); })
+          .catch((reason) => { jobResults.set(j, { status: "rejected", reason }); });
+      }
+
+      await pool.drain();
+
+      for (let j = 0; j < jobs.length; j++) {
+        const job = jobs[j];
+        const r = jobResults.get(j)!;
         let attempt: Attempt;
         let mergeFiles: Record<string, string> | undefined;
         if (r.status === "fulfilled") {
@@ -368,7 +402,7 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
             tests_added: 0,
             commands_run: [],
             boundary_violations: [],
-            notes: [`concurrent error: ${r.reason}`],
+            notes: [`worker error: ${(r.reason as Error)?.message ?? r.reason}`],
           };
         }
 
@@ -447,7 +481,7 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
         const result = crossover(parentA, parentB, allRewards, childId);
         if (result) {
           genomes.push(result.child);
-          appendJsonl(storage.genomesFile, result.child);
+          globalBuffer.appendJsonl(storage.genomesFile, result.child);
           const from = Object.entries(result.inherited).map(([k, v]) => `${k}←${v}`).join(", ");
           console.log(`  crossover: ${result.parentA} × ${result.parentB} → ${result.child.id} (${from})`);
         }
@@ -464,9 +498,10 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true):
   const allRewards = readJsonl<RewardBundle>(storage.rewardsFile);
   for (const ek of experienceKeys) {
     const health = evaluateExperienceKeyHealth(hashExperienceKey(ek), allRewards);
-    appendJsonl(storage.healthFile, health);
+    globalBuffer.appendJsonl(storage.healthFile, health);
   }
   console.log(`ran ${iterations} experiment iterations`);
+  globalBuffer.flushAll();
 }
 
 function showGenomes(): void {
@@ -728,6 +763,8 @@ type CliCommand =
   | "reject-attempt"
   | "rollback-attempt"
   | "report"
+  | "export-strategies"
+  | "import-strategies"
   | "help";
 
 interface ParsedCliArgs {
@@ -736,6 +773,8 @@ interface ParsedCliArgs {
   autoMerge: boolean;
   iterations: number;
   targetId?: string;
+  file?: string;
+  topK?: number;
 }
 
 function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -752,6 +791,8 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
     "reject-attempt",
     "rollback-attempt",
     "report",
+    "export-strategies",
+    "import-strategies",
     "help",
   ];
   const cmd: CliCommand = knownCommands.includes(rawCmd as CliCommand) ? rawCmd as CliCommand : "help";
@@ -759,13 +800,68 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
   const autoMerge = !args.includes("--no-auto-merge");
   const iterArg = args.find((a) => /^\d+$/.test(a));
   const targetId = args.filter((a) => !a.startsWith("--")).find((a) => a !== rawCmd && !/^\d+$/.test(a));
+  const topKFlag = args.find((a) => a.startsWith("--top-k="));
   return {
     cmd,
     useReal,
     autoMerge,
     iterations: Number(iterArg ?? 8),
     targetId,
+    file: targetId,
+    topK: topKFlag ? parseInt(topKFlag.slice("--top-k=".length), 10) : 5,
   };
+}
+
+
+function exportStrategies(topK = 5): void {
+  const genomes = readJsonl<StrategyGenome>(storage.genomesFile);
+  const rewards = readJsonl<RewardBundle>(storage.rewardsFile);
+  const scored = genomes.map((g) => {
+    const rs = rewards.filter((r) => r.strategy_genome_id === g.id);
+    const avg = rs.length ? rs.reduce((s, r) => s + r.reward, 0) / rs.length : 0;
+    return { g, score: avg };
+  }).sort((a, b) => b.score - a.score);
+  const compact = scored.slice(0, topK).map((s) => ({
+    id: s.g.id,
+    generation: s.g.generation,
+    parent_id: s.g.parent_id,
+    status: s.g.status,
+    applies_to: s.g.applies_to,
+    context_strategy: s.g.context_strategy,
+    boundary_strategy: s.g.boundary_strategy,
+    action_strategy: s.g.action_strategy,
+    validation_strategy: s.g.validation_strategy,
+    reward_profile: s.g.reward_profile,
+    avg_reward: s.score,
+  }));
+  const outFile = path.join(root, `.antcode_export_${Date.now()}.json`);
+  writeJson(outFile, compact);
+  console.log(`Exported ${compact.length} strategies to ${outFile}`);
+}
+
+function importStrategies(file: string): void {
+  const fullPath = path.resolve(file);
+  if (!fs.existsSync(fullPath)) {
+    console.error(`Import file not found: ${fullPath}`);
+    return;
+  }
+  const imported = readJson<StrategyGenome[]>(fullPath, []);
+  if (!Array.isArray(imported)) {
+    console.error("Import file must contain an array of strategy genomes");
+    return;
+  }
+  const genomes = readJsonl<StrategyGenome>(storage.genomesFile);
+  let added = 0;
+  for (const g of imported) {
+    if (!genomes.some((existing) => existing.id === g.id)) {
+      g.status = "candidate";
+      genomes.push(g);
+      globalBuffer.appendJsonl(storage.genomesFile, g);
+      added++;
+    }
+  }
+  globalBuffer.flushAll();
+  console.log(`Imported ${added} new strategies. Total genomes: ${genomes.length}`);
 }
 
 async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
@@ -782,7 +878,12 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   if (parsed.cmd === "reject-attempt") return rejectAttempt(parsed.targetId);
   if (parsed.cmd === "rollback-attempt") return rollbackAttempt(parsed.targetId);
   if (parsed.cmd === "report") return showReport();
-  console.log("AntCode v0.8.2\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
+  if (parsed.cmd === "export-strategies") return exportStrategies(parsed.topK);
+  if (parsed.cmd === "import-strategies") {
+    if (!parsed.file) { console.error("Usage: import-strategies <file>"); return; }
+    return importStrategies(parsed.file);
+  }
+  console.log("AntCode v0.8.2\n\nCommands:\n  run-experiment [n] [--real] [--no-auto-merge]\n  review-attempt [attempt_id|artifact_id]\n  approve-attempt <attempt_id|artifact_id>\n  reject-attempt <attempt_id|artifact_id>\n  rollback-attempt <attempt_id|artifact_id>\n  report\n  export-strategies [--top-k=n]\n  import-strategies <file>\n  show-policy\n  show-genomes\n  show-mutations\n  show-health");
 }
 
 void dispatchCli(parseCliArgs(process.argv)).catch(console.error);

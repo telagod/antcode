@@ -154,6 +154,29 @@ export interface MutationEvent {
   status: "candidate" | "promoted" | "suppressed" | "quarantined" | "keep_both";
 }
 
+export interface RewardWeights {
+  success_base_success: number;
+  success_base_blocked: number;
+  success_base_failure: number;
+  semantic_weight: number;
+  diff_penalty_coeff: number;
+  file_penalty_coeff: number;
+  guard_penalty_coeff: number;
+  token_penalty_coeff: number;
+  cache_bonus_coeff: number;
+  test_bonus: number;
+  test_execution_bonus: number;
+  boundary_bonus: number;
+  reward_hacking_penalty: number;
+}
+
+export interface WeightCalibrationRecord {
+  timestamp: string;
+  weights: RewardWeights;
+  mse: number;
+  samples_used: number;
+}
+
 export interface PolicyConfig {
   version: string;
   mutation_threshold: {
@@ -171,6 +194,7 @@ export interface PolicyConfig {
     positive: number;
     negative: number;
   };
+  exploration_rate: number;
 }
 
 export type ExperienceKeyHealthDiagnosis =

@@ -7,6 +7,25 @@ export interface MutationEvidence {
   notes?: string[];
 }
 
+export interface MutationRule {
+  type: string;
+  field: string;
+  value?: unknown;
+  delta?: number;
+  min?: number;
+  max?: number;
+  search?: string;
+  replace?: string;
+  exclude?: string[];
+}
+
+export interface MutationRecipe {
+  if_failure_mode: FailureMode;
+  mutation_type: string;
+  hypothesis_template: string;
+  rules: MutationRule[];
+}
+
 function extractEvidence(attempts: Attempt[]): MutationEvidence {
   if (!attempts.length) return {};
   const maxDiff = Math.max(...attempts.map((a) => a.diff_lines));
@@ -16,77 +35,227 @@ function extractEvidence(attempts: Attempt[]): MutationEvidence {
   return { actual_diff_lines: maxDiff, actual_files_changed: maxFiles, boundary_violations: violations, notes };
 }
 
+function getField(obj: StrategyGenome, path: string): unknown {
+  return path.split(".").reduce((o: any, k) => (o == null ? undefined : o[k]), obj);
+}
+
+function setField(obj: StrategyGenome, path: string, value: unknown): void {
+  const keys = path.split(".");
+  const last = keys.pop()!;
+  const target = keys.reduce((o: any, k) => o[k], obj);
+  target[last] = value;
+}
+
+function recordChange(
+  changed: MutationEvent["mutation"]["changed"],
+  field: string,
+  from: unknown,
+  to: unknown,
+): void {
+  changed[field] = { from, to };
+}
+
+function executeRule(
+  genome: StrategyGenome,
+  rule: MutationRule,
+  changed: MutationEvent["mutation"]["changed"],
+  evidence: MutationEvidence,
+): boolean {
+  const current = getField(genome, rule.field);
+
+  switch (rule.type) {
+    case "set": {
+      recordChange(changed, rule.field, current, rule.value);
+      setField(genome, rule.field, rule.value);
+      return true;
+    }
+    case "toggle": {
+      const val = !!current;
+      recordChange(changed, rule.field, val, !val);
+      setField(genome, rule.field, !val);
+      return true;
+    }
+    case "prepend": {
+      const arr = Array.isArray(current) ? [...current] : [];
+      const val = rule.value as string;
+      if (!arr.includes(val)) arr.unshift(val);
+      recordChange(changed, rule.field, current, arr);
+      setField(genome, rule.field, arr);
+      return true;
+    }
+    case "push": {
+      const arr = Array.isArray(current) ? [...current] : [];
+      const val = rule.value as string;
+      if (!arr.includes(val)) arr.push(val);
+      recordChange(changed, rule.field, current, arr);
+      setField(genome, rule.field, arr);
+      return true;
+    }
+    case "dedupe": {
+      if (!Array.isArray(current)) return false;
+      const exclude = new Set(rule.exclude ?? []);
+      const arr = current.filter((x) => !exclude.has(x));
+      // if value specified, ensure it's present after deduping
+      if (rule.value !== undefined && !arr.includes(rule.value as string)) {
+        arr.unshift(rule.value as string);
+      }
+      recordChange(changed, rule.field, current, arr);
+      setField(genome, rule.field, arr);
+      return true;
+    }
+    case "adjust": {
+      const num = typeof current === "number" ? current : 0;
+      let next = num + (rule.delta ?? 0);
+      if (rule.min !== undefined) next = Math.max(rule.min, next);
+      if (rule.max !== undefined) next = Math.min(rule.max, next);
+      recordChange(changed, rule.field, num, next);
+      setField(genome, rule.field, next);
+      return true;
+    }
+    case "replace": {
+      if (typeof current !== "string") return false;
+      const next = current.replace(rule.search ?? "", rule.replace ?? "");
+      recordChange(changed, rule.field, current, next);
+      setField(genome, rule.field, next);
+      return true;
+    }
+    case "clamp": {
+      if (typeof current !== "number") return false;
+      let next = current;
+      if (rule.min !== undefined) next = Math.max(rule.min, next);
+      if (rule.max !== undefined) next = Math.min(rule.max, next);
+      recordChange(changed, rule.field, current, next);
+      setField(genome, rule.field, next);
+      return true;
+    }
+    case "downgrade_enum": {
+      // e.g., "large" → "medium" → "small" → "tiny"
+      const order = (rule.value as string[] | undefined) ?? ["large", "medium", "small", "tiny"];
+      const idx = order.indexOf(current as string);
+      const next = idx > 0 ? order[idx - 1] : order[order.length - 1];
+      recordChange(changed, rule.field, current, next);
+      setField(genome, rule.field, next);
+      return true;
+    }
+    case "use_evidence": {
+      // Special: adjust based on evidence value
+      if (rule.field === "boundary_strategy.max_diff_lines" && evidence.actual_diff_lines != null) {
+        const next = Math.min(
+          rule.max ?? Infinity,
+          Math.ceil(evidence.actual_diff_lines * (rule.delta ?? 1.2)),
+        );
+        recordChange(changed, rule.field, current, next);
+        setField(genome, rule.field, next);
+        return true;
+      }
+      if (rule.field === "context_strategy.max_files" && evidence.actual_files_changed != null) {
+        const next = Math.min(
+          rule.max ?? Infinity,
+          Math.max(rule.min ?? 0, evidence.actual_files_changed + (rule.delta ?? 2)),
+        );
+        recordChange(changed, rule.field, current, next);
+        setField(genome, rule.field, next);
+        return true;
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+// ── Default mutation recipes (extracted from former hard-coded logic) ──
+
+export const DEFAULT_MUTATION_RECIPES: MutationRecipe[] = [
+  {
+    if_failure_mode: "missing_test",
+    mutation_type: "validation_order_change",
+    hypothesis_template: "Patching happened before expected behavior was locked by tests.",
+    rules: [
+      { type: "prepend", field: "validation_strategy.required", value: "write_or_update_targeted_test" },
+      { type: "prepend", field: "validation_strategy.required", value: "run_targeted_test" },
+      { type: "dedupe", field: "validation_strategy.required", exclude: ["targeted_test", "write_or_update_targeted_test", "run_targeted_test"] },
+    ],
+  },
+  {
+    if_failure_mode: "context_underread",
+    mutation_type: "context_expansion",
+    hypothesis_template: "Strategy under-read dependencies (needed ~{files_needed} files).",
+    rules: [
+      { type: "prepend", field: "context_strategy.read_order", value: "critical_dependency_scan" },
+      { type: "use_evidence", field: "context_strategy.max_files", min: 3, max: 14, delta: 2 },
+    ],
+  },
+  {
+    if_failure_mode: "boundary_blocked",
+    mutation_type: "boundary_adaptive_expansion",
+    hypothesis_template: "Boundary too narrow (actual diff={diff}, was max={old_max}).",
+    rules: [
+      { type: "set", field: "boundary_strategy.allowed_file_policy", value: "affected_module_plus_tests_plus_one_hop_dependency" },
+      { type: "use_evidence", field: "boundary_strategy.max_diff_lines", max: 500, delta: 1.2 },
+    ],
+  },
+  {
+    if_failure_mode: "patch_too_broad",
+    mutation_type: "patch_adaptive_reduction",
+    hypothesis_template: "Patch too broad (actual diff={diff}, shrinking).",
+    rules: [
+      { type: "downgrade_enum", field: "action_strategy.patch_granularity", value: ["large", "medium", "small", "tiny"] },
+      { type: "use_evidence", field: "boundary_strategy.max_diff_lines", max: 500, delta: 0.8 },
+      { type: "clamp", field: "boundary_strategy.max_diff_lines", min: 80 },
+    ],
+  },
+  {
+    if_failure_mode: "semantic_miss",
+    mutation_type: "semantic_evidence_tightening",
+    hypothesis_template: "Tests passed without proving goal. Evidence: {notes}",
+    rules: [
+      { type: "push", field: "reward_profile.optimize_for", value: "explicit_goal_evidence" },
+    ],
+  },
+  {
+    if_failure_mode: "reward_hacking",
+    mutation_type: "quarantine",
+    hypothesis_template: "Reward hacking signal detected; preserved only for audit.",
+    rules: [
+      { type: "set", field: "status", value: "quarantined" },
+    ],
+  },
+];
+
+// ── Interpreter ──
+
 export function applyOneMutation(
   child: StrategyGenome,
   failureMode: FailureMode,
   changed: MutationEvent["mutation"]["changed"],
   attempts: Attempt[] = [],
+  recipes = DEFAULT_MUTATION_RECIPES,
 ): { type: string; hypothesis: string } {
   const evidence = extractEvidence(attempts);
+  const recipe = recipes.find((r) => r.if_failure_mode === failureMode);
 
-  if (failureMode === "missing_test") {
-    const before = [...child.validation_strategy.required];
-    child.validation_strategy.required = [
-      "write_or_update_targeted_test",
-      "run_targeted_test",
-      ...before.filter(
-        (x) => x !== "targeted_test" && x !== "write_or_update_targeted_test" && x !== "run_targeted_test",
-      ),
-    ];
-    changed["validation_strategy.required"] = { from: before, to: child.validation_strategy.required };
-    return { type: "validation_order_change", hypothesis: "Patching happened before expected behavior was locked by tests." };
-  } else if (failureMode === "context_underread") {
-    const beforeOrder = [...child.context_strategy.read_order];
-    const beforeMax = child.context_strategy.max_files;
-    if (!child.context_strategy.read_order.includes("critical_dependency_scan")) {
-      child.context_strategy.read_order.unshift("critical_dependency_scan");
-    }
-    const filesNeeded = evidence.actual_files_changed ?? 0;
-    const bump = filesNeeded > 0 ? Math.max(3, filesNeeded + 2) : 3;
-    child.context_strategy.max_files = Math.min(14, child.context_strategy.max_files + bump);
-    const afterOrder = [...child.context_strategy.read_order];
-    changed["context_strategy.read_order"] = { from: beforeOrder, to: afterOrder };
-    changed["context_strategy.max_files"] = { from: beforeMax, to: child.context_strategy.max_files };
-    return { type: "context_expansion", hypothesis: `Strategy under-read dependencies (needed ~${filesNeeded} files).` };
-  } else if (failureMode === "boundary_blocked") {
-    const beforePolicy = child.boundary_strategy.allowed_file_policy;
-    const beforeLines = child.boundary_strategy.max_diff_lines;
-    child.boundary_strategy.allowed_file_policy = "affected_module_plus_tests_plus_one_hop_dependency";
-    // adaptive: jump to actual diff + 20% margin instead of blind *1.5
-    if (evidence.actual_diff_lines && evidence.actual_diff_lines > child.boundary_strategy.max_diff_lines) {
-      child.boundary_strategy.max_diff_lines = Math.min(500, Math.ceil(evidence.actual_diff_lines * 1.2));
-    } else {
-      child.boundary_strategy.max_diff_lines = Math.min(500, Math.ceil(child.boundary_strategy.max_diff_lines * 1.5));
-    }
-    changed["boundary_strategy.allowed_file_policy"] = { from: beforePolicy, to: child.boundary_strategy.allowed_file_policy };
-    changed["boundary_strategy.max_diff_lines"] = { from: beforeLines, to: child.boundary_strategy.max_diff_lines };
-    return { type: "boundary_adaptive_expansion", hypothesis: `Boundary too narrow (actual diff=${evidence.actual_diff_lines ?? "?"}, was max=${beforeLines}).` };
-  } else if (failureMode === "patch_too_broad") {
-    const beforeGranularity = child.action_strategy.patch_granularity;
-    const beforeLines = child.boundary_strategy.max_diff_lines;
-    child.action_strategy.patch_granularity = beforeGranularity === "large" ? "medium" : beforeGranularity === "medium" ? "small" : "tiny";
-    // adaptive: if we know actual diff, shrink to 80% of it; otherwise 0.7x
-    if (evidence.actual_diff_lines && evidence.actual_diff_lines > 100) {
-      child.boundary_strategy.max_diff_lines = Math.max(80, Math.ceil(evidence.actual_diff_lines * 0.8));
-    } else {
-      child.boundary_strategy.max_diff_lines = Math.max(80, Math.floor(child.boundary_strategy.max_diff_lines * 0.7));
-    }
-    changed["action_strategy.patch_granularity"] = { from: beforeGranularity, to: child.action_strategy.patch_granularity };
-    changed["boundary_strategy.max_diff_lines"] = { from: beforeLines, to: child.boundary_strategy.max_diff_lines };
-    return { type: "patch_adaptive_reduction", hypothesis: `Patch too broad (actual diff=${evidence.actual_diff_lines ?? "?"}, shrinking).` };
-  } else if (failureMode === "semantic_miss") {
-    const before = [...child.reward_profile.optimize_for];
-    if (!child.reward_profile.optimize_for.includes("explicit_goal_evidence")) {
-      child.reward_profile.optimize_for.push("explicit_goal_evidence");
-    }
-    changed["reward_profile.optimize_for"] = { from: before, to: child.reward_profile.optimize_for };
-    const weakNotes = (evidence.notes ?? []).filter((n) => n.includes("weak") || n.includes("evidence")).slice(0, 2);
-    return { type: "semantic_evidence_tightening", hypothesis: `Tests passed without proving goal. Evidence: ${weakNotes.join("; ") || "low semantic score"}.` };
-  } else if (failureMode === "reward_hacking") {
-    const before = child.status;
-    child.status = "quarantined";
-    changed["status"] = { from: before, to: child.status };
-    return { type: "quarantine", hypothesis: "Reward hacking signal detected; preserved only for audit." };
+  if (!recipe) {
+    return { type: "unknown_mutation", hypothesis: "Mutation generated from repeated failure feedback." };
   }
-  return { type: "unknown_mutation", hypothesis: "Mutation generated from repeated failure feedback." };
+
+  let anyApplied = false;
+  for (const rule of recipe.rules) {
+    const ok = executeRule(child, rule, changed, evidence);
+    if (ok) anyApplied = true;
+  }
+
+  if (!anyApplied) {
+    return { type: "unknown_mutation", hypothesis: "Mutation generated from repeated failure feedback." };
+  }
+
+  // Build hypothesis from template
+  let hypothesis = recipe.hypothesis_template;
+  hypothesis = hypothesis.replace("{files_needed}", String(evidence.actual_files_changed ?? "?"));
+  hypothesis = hypothesis.replace("{diff}", String(evidence.actual_diff_lines ?? "?"));
+  hypothesis = hypothesis.replace("{old_max}", String(getField(child, "boundary_strategy.max_diff_lines") ?? "?"));
+  const weakNotes = (evidence.notes ?? []).filter((n) => n.includes("weak") || n.includes("evidence")).slice(0, 2);
+  hypothesis = hypothesis.replace("{notes}", weakNotes.join("; ") || "low semantic score");
+
+  return { type: recipe.mutation_type, hypothesis };
 }

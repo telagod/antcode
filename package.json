@@ -1,6 +1,6 @@
 {
   "name": "antcode",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "AntCode v0.8.2: wider real-run timeout and workbench churn guard",
   "type": "module",
   "private": true,
@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "^0.70.6",
-    "@mariozechner/pi-ai": "^0.70.6"
+    "@mariozechner/pi-ai": "^0.70.6",
+    "diff": "^9.0.0"
   }
 }

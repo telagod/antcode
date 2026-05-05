@@ -9,6 +9,69 @@ function nextId(prefix: string, n: number): string {
   return `${prefix}_${String(n).padStart(4, "0")}`;
 }
 
+
+// ── Random exploration mutations ──
+// When mutation threshold isn't reached, still occasionally explore
+// with safe random tweaks to avoid local optima.
+
+const SAFE_RANDOM_RULES = [
+  { field: "context_strategy.max_files", delta: 1, min: 2, max: 14 },
+  { field: "context_strategy.max_files", delta: -1, min: 2, max: 14 },
+  { field: "boundary_strategy.max_diff_lines", delta: 20, min: 40, max: 500 },
+  { field: "boundary_strategy.max_diff_lines", delta: -20, min: 40, max: 500 },
+];
+
+function getField(obj: any, path: string): unknown {
+  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+
+function setField(obj: any, path: string, value: unknown): void {
+  const keys = path.split(".");
+  const last = keys.pop()!;
+  const target = keys.reduce((o, k) => o[k], obj);
+  target[last] = value;
+}
+
+export function randomExplore(
+  parent: StrategyGenome,
+  mutationIndex: number,
+  random = Math.random,
+): { child: StrategyGenome; event: MutationEvent } | null {
+  const rule = SAFE_RANDOM_RULES[Math.floor(random() * SAFE_RANDOM_RULES.length)];
+  const child = structuredClone(parent);
+  child.parent_id = parent.id;
+  child.generation = parent.generation + 1;
+  child.status = "candidate";
+  child.id = `${parent.id.replace(/_v\d+$/, "")}_v${child.generation}`;
+
+  const before = getField(child, rule.field);
+  if (typeof before !== "number") return null;
+
+  let next = before + rule.delta;
+  next = Math.max(rule.min, Math.min(rule.max, next));
+  setField(child, rule.field, next);
+
+  const changed: MutationEvent["mutation"]["changed"] = {};
+  changed[rule.field] = { from: before, to: next };
+
+  const event: MutationEvent = {
+    id: `mut_${String(mutationIndex).padStart(4, "0")}`,
+    timestamp: new Date().toISOString(),
+    parent_strategy: parent.id,
+    child_strategy: child.id,
+    triggered_by: {
+      experience_key_hash: "random_exploration",
+      failure_mode: "none",
+      attempts: [],
+    },
+    mutation: { type: "random_exploration", changed },
+    hypothesis: `Random exploration: ${rule.field} ${before} → ${next}`,
+    status: "candidate",
+  };
+
+  return { child, event };
+}
+
 export function canMutate(
   parent: StrategyGenome,
   rewards: RewardBundle[],

@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PatchArtifactManifest } from "./types";
+import { diffLines } from "diff";
+import { fastCopyRecursive, reflinkSupported } from "./workspace/cow";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -130,7 +132,7 @@ export function createSlot(slotId: number): string {
     for (const sourceDir of WORKSPACE_DIRS) {
       const src = path.join(PROJECT_ROOT, sourceDir);
       const dst = path.join(dir, sourceDir);
-      if (pathExists(src)) fs.cpSync(src, dst, { recursive: true });
+      if (pathExists(src)) fastCopyRecursive(src, dst, reflinkSupported());
     }
     const nodeModules = path.join(PROJECT_ROOT, "node_modules");
     const slotNodeModules = path.join(dir, "node_modules");
@@ -245,21 +247,16 @@ function countDiffLines(slot: string, files: string[]): number {
         total += fs.readFileSync(slotFile, "utf8").split("\n").length;
         continue;
       }
-      const out = execSync(`git diff --no-index -- "${projectFile}" "${slotFile}" | tail -n +5`, {
-        stdio: "pipe"
-      }).toString();
-      total += out.split("\n").filter((l: string) => l.startsWith("+") || l.startsWith("-")).length;
-    } catch (e) {
-      const err = e as { stdout?: Buffer; stderr?: Buffer };
-      const out = err.stdout?.toString() ?? err.stderr?.toString() ?? "";
-      if (out) {
-        total += out
-          .split("\n")
-          .slice(4)
-          .filter((l: string) => l.startsWith("+") || l.startsWith("-")).length;
-      } else {
-        total += 999;
+      const oldContent = pathExists(projectFile) ? fs.readFileSync(projectFile, "utf8") : "";
+      const newContent = pathExists(slotFile) ? fs.readFileSync(slotFile, "utf8") : "";
+      const changes = diffLines(oldContent, newContent);
+      for (const change of changes) {
+        if (change.added || change.removed) {
+          total += change.value.split("\n").length;
+        }
       }
+    } catch {
+      total += 999;
     }
   }
   return total;
@@ -280,14 +277,34 @@ function diffForFile(slot: string, relPath: string): string {
       lines,
     ].join("\n");
   }
-  try {
-    return execSync(`git diff --no-index -- "${projectFile}" "${slotFile}"`, {
-      stdio: "pipe",
-    }).toString();
-  } catch (e) {
-    const err = e as { stdout?: Buffer; stderr?: Buffer };
-    return err.stdout?.toString() ?? err.stderr?.toString() ?? "";
+  const oldContent = pathExists(projectFile) ? fs.readFileSync(projectFile, "utf8") : "";
+  const newContent = pathExists(slotFile) ? fs.readFileSync(slotFile, "utf8") : "";
+  const changes = diffLines(oldContent, newContent);
+  const hunks: string[] = [];
+  let oldLine = 1, newLine = 1;
+  for (const change of changes) {
+    const lines = change.value.split("\n");
+    for (const line of lines) {
+      if (change.added) {
+        hunks.push(`+${line}`);
+        newLine++;
+      } else if (change.removed) {
+        hunks.push(`-${line}`);
+        oldLine++;
+      } else {
+        hunks.push(` ${line}`);
+        oldLine++;
+        newLine++;
+      }
+    }
   }
+  return [
+    `diff --git a/${relPath} b/${relPath}`,
+    `--- a/${relPath}`,
+    `+++ b/${relPath}`,
+    "@@",
+    ...hunks,
+  ].join("\n");
 }
 
 function safeArtifactId(attemptId: string): string {
@@ -467,7 +484,8 @@ export function rollbackPatchArtifact(idOrAttemptId: string): PatchArtifactManif
 
 function runTypecheck(slot: string): { passed: boolean; output: string; errorCount: number } {
   try {
-    const out = execSync("npx tsc --noEmit 2>&1", { cwd: slot, stdio: "pipe", timeout: 30000 }).toString();
+    const tsBuildInfo = path.join(slot, ".antcode", ".tsbuildinfo");
+    const out = execSync(`npx tsc --noEmit --incremental --tsBuildInfoFile "${tsBuildInfo}" 2>&1`, { cwd: slot, stdio: "pipe", timeout: 30000 }).toString();
     return { passed: true, output: out, errorCount: 0 };
   } catch (e) {
     const error = e as NodeJS.ErrnoException & { stdout?: Buffer; stderr?: Buffer };

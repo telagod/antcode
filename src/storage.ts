@@ -335,3 +335,71 @@ export function overwriteJsonl(file: string, values: unknown[]): void {
 export function antcodePath(root: string, name: string): string {
   return path.join(root, ".antcode", name);
 }
+
+
+// ── Buffered Storage ──
+// Reduces syscall overhead by batching JSONL writes.
+
+interface BufferEntry {
+  lines: string[];
+  timer?: NodeJS.Timeout;
+}
+
+export class BufferedStorage {
+  private buffers = new Map<string, BufferEntry>();
+  private maxLines = 50;
+  private flushIntervalMs = 5000;
+
+  appendJsonl(file: string, value: unknown): void {
+    let entry = this.buffers.get(file);
+    if (!entry) {
+      entry = { lines: [] };
+      entry.timer = setTimeout(() => this.flushFile(file), this.flushIntervalMs);
+      this.buffers.set(file, entry);
+    }
+    entry.lines.push(JSON.stringify(value));
+    if (entry.lines.length >= this.maxLines) {
+      this.flushFile(file);
+    }
+  }
+
+  flushFile(file: string): void {
+    const entry = this.buffers.get(file);
+    if (!entry || entry.lines.length === 0) return;
+    const data = entry.lines.join("\n") + "\n";
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = undefined;
+    }
+    this.buffers.delete(file);
+    try {
+      ensureDir(path.dirname(file));
+      fs.appendFileSync(file, data, "utf8");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new StorageError({
+        code: "WRITE_FAILED",
+        file,
+        operation: "appendJsonl",
+        cause: error,
+        message: `Failed to append buffered JSONL to ${file}: ${message}`,
+      });
+    }
+  }
+
+  flushAll(): void {
+    for (const file of Array.from(this.buffers.keys())) {
+      this.flushFile(file);
+    }
+  }
+
+  close(): void {
+    this.flushAll();
+    for (const entry of this.buffers.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this.buffers.clear();
+  }
+}
+
+export const globalBuffer = new BufferedStorage();
