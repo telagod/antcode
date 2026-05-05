@@ -2,7 +2,7 @@ import type { Model } from "@mariozechner/pi-ai";
 
 export const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
 export const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
-export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "moonshotai/Kimi-K2.6";
+export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "minimaxai/minimax-m2.7";
 
 export function createPiModel(): Model<"openai-completions"> {
   return {
