@@ -39,7 +39,11 @@ function isInSameDir(file: string, targetDirs: Set<string>): boolean {
  *
  * Both 0.0 when no files changed (caller should handle as no-edit case separately).
  */
-export function computeAlignment(filesChanged: string[], targetFiles: string[]): { alignment: number; containment: number } {
+export function computeAlignment(
+  filesChanged: string[],
+  targetFiles: string[],
+  approvedExtras: Set<string> = new Set(),
+): { alignment: number; containment: number } {
   if (filesChanged.length === 0) return { alignment: 0, containment: 0 };
   if (targetFiles.length === 0) {
     // No target — can't measure drift. Treat as fully aligned (don't penalize legacy / mock attempts).
@@ -51,7 +55,8 @@ export function computeAlignment(filesChanged: string[], targetFiles: string[]):
   let inTarget = 0;
   let contained = 0;
   for (const f of filesChanged) {
-    if (targetSet.has(f)) {
+    if (targetSet.has(f) || approvedExtras.has(f)) {
+      // Approved escalations count as "in target" — agent's judgment was validated by judge.
       inTarget += 1;
       contained += 1;
     } else if (isInSameDir(f, targetDirs) || isTestSidecar(f)) {
@@ -106,8 +111,20 @@ export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): Re
   }
 
   // Alignment scoring: did the agent edit what the task asked for?
+  // Approved escalations (judge-validated out-of-scope edits) count as in-target.
   const targetFiles = attempt.target_files ?? [];
-  const { alignment, containment } = computeAlignment(attempt.files_changed, targetFiles);
+  const approvedSet = new Set<string>(
+    (attempt.escalations ?? [])
+      .filter((e) => e.verdict === "approved" || e.verdict === "conditional")
+      .map((e) => e.file),
+  );
+  const rejectedExtras = (attempt.escalations ?? []).filter(
+    (e) => e.verdict === "rejected",
+  ).length;
+  const conditionalExtras = (attempt.escalations ?? []).filter(
+    (e) => e.verdict === "conditional",
+  ).length;
+  const { alignment, containment } = computeAlignment(attempt.files_changed, targetFiles, approvedSet);
   const alignmentBonus = w.alignment_bonus ?? 0.15;
   const driftPenalty = w.drift_penalty ?? 0.4;
   const driftThreshold = w.drift_threshold ?? 0.3;
@@ -125,6 +142,16 @@ export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): Re
       semantic += alignmentBonus * 0.5;
       semanticEvidence.push("partial alignment with task target_files");
     }
+  }
+
+  // Mode F escalation signals: judgment-quality bonuses/penalties.
+  if (approvedSet.size > 0 && rejectedExtras === 0) {
+    // Agent found genuinely necessary out-of-scope edits and ALL were approved.
+    semantic += 0.10;
+    semanticEvidence.push(`good judgment: ${approvedSet.size} approved escalation(s)`);
+  }
+  if (conditionalExtras > 0) {
+    guard_flags.push("scope_creep_minor");
   }
 
   semantic = clamp01(semantic);

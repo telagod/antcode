@@ -2,6 +2,7 @@
 import "dotenv/config";
 import {
   Attempt,
+  EscalationRequest,
   ExperienceKey,
   ExperienceKeyHealth,
   MutationEvent,
@@ -24,8 +25,10 @@ import { loadWeights } from "./reward/weights";
 import { canMutate, mutateGenome, randomExplore } from "./mutation";
 import { mockAttempt } from "./simulator";
 import { realAttempt, runSharedRecon } from "./realWorker";
-import { realTasks } from "./tasks";
+import { realTasks, RealTask } from "./tasks";
 import { generateTasks } from "./taskGen";
+import { completeSimple } from "@mariozechner/pi-ai";
+import { createPiModel, API_KEY } from "./runtime/piModel";
 import {
   approvePatchArtifact,
   getPatchArtifact,
@@ -91,6 +94,141 @@ function loadPolicy(): PolicyConfig {
 }
 
 const MAX_GENOMES_PER_GOAL = 8;
+
+const JUDGE_TIMEOUT_MS = Number(process.env.ANTCODE_JUDGE_TIMEOUT_MS ?? 60000);
+
+/**
+ * Parses agent-supplied `ESCALATE: <file> | <reason>` lines from attempt notes.
+ * Returns map keyed by file path. Lines without proper format are silently skipped.
+ */
+function parseEscalations(notes: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const note of notes) {
+    const m = note.match(/^\s*ESCALATE:\s*([^|]+?)\s*\|\s*(.+)$/);
+    if (m) {
+      const file = m[1].trim();
+      const reason = m[2].trim();
+      if (file && reason) out.set(file, reason);
+    }
+  }
+  return out;
+}
+
+interface EscalationCandidate {
+  file: string;
+  reason: string;
+  diffPreview: string;
+}
+
+/**
+ * Asks the LLM judge to evaluate each escalation candidate against the task.
+ * Returns one verdict per input. On any failure (timeout, parse error, network),
+ * defaults to "rejected" with score 0.0 — fail-closed: a broken judge does not
+ * silently grant boundary bypass.
+ */
+async function judgeEscalations(
+  task: RealTask,
+  candidates: EscalationCandidate[],
+): Promise<EscalationRequest[]> {
+  if (candidates.length === 0) return [];
+
+  const prompt = `You are reviewing a code agent's request to modify files OUTSIDE its assigned scope.
+
+Task description: ${task.description.slice(0, 500)}
+Task target_files (the assigned scope): ${JSON.stringify(task.target_files)}
+
+The agent ALSO modified these files outside that scope, with the following justifications:
+
+${candidates
+  .map(
+    (c, i) =>
+      `[${i + 1}] File: ${c.file}
+    Reason given: ${c.reason}
+    Diff preview (first 25 lines):
+${c.diffPreview
+  .split("\n")
+  .slice(0, 25)
+  .map((l) => "      " + l)
+  .join("\n")}`,
+  )
+  .join("\n\n")}
+
+For EACH file, decide:
+- "approved": clearly necessary for the assigned task (e.g. shared util, dependent file with broken import, dead-code shim that the task definition slightly mis-named).
+- "rejected": unrelated change, drift, or scope creep dressed up as necessity.
+- "conditional": tangentially related; accept but flag for review.
+
+Score each from 0.0 (clearly off-task) to 1.0 (clearly necessary).
+
+Respond ONLY with a JSON array, ONE OBJECT PER INPUT, in the same order. Example:
+[{"file": "src/foo.ts", "verdict": "approved", "score": 0.9, "rationale": "shared helper used by target file"}, ...]
+
+Do not include any other text. The first character of your response must be "[".`;
+
+  try {
+    const response = await Promise.race([
+      completeSimple(
+        createPiModel(),
+        {
+          systemPrompt: "You are a precise code reviewer. Output JSON only.",
+          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+        },
+        { apiKey: API_KEY, maxRetries: 1, timeoutMs: JUDGE_TIMEOUT_MS },
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("judge timeout")), JUDGE_TIMEOUT_MS + 5000),
+      ),
+    ]);
+    const text = (response as any).content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    const start = text.indexOf("[");
+    const end = text.lastIndexOf("]");
+    if (start < 0 || end < start) throw new Error("no JSON array in judge response");
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (!Array.isArray(parsed)) throw new Error("judge response is not an array");
+
+    const byFile = new Map<string, any>();
+    for (const v of parsed) {
+      if (v && typeof v.file === "string") byFile.set(v.file, v);
+    }
+
+    return candidates.map((c) => {
+      const v = byFile.get(c.file);
+      if (!v) {
+        return {
+          file: c.file,
+          reason: c.reason,
+          verdict: "rejected" as const,
+          judge_score: 0,
+          judge_rationale: "judge did not return a verdict for this file",
+        };
+      }
+      const verdict =
+        v.verdict === "approved" || v.verdict === "rejected" || v.verdict === "conditional"
+          ? v.verdict
+          : "rejected";
+      const score = typeof v.score === "number" ? Math.max(0, Math.min(1, v.score)) : 0;
+      return {
+        file: c.file,
+        reason: c.reason,
+        verdict,
+        judge_score: score,
+        judge_rationale: typeof v.rationale === "string" ? v.rationale.slice(0, 200) : "",
+      };
+    });
+  } catch (e) {
+    const msg = (e as Error).message.slice(0, 80);
+    return candidates.map((c) => ({
+      file: c.file,
+      reason: c.reason,
+      verdict: "rejected" as const,
+      judge_score: 0,
+      judge_rationale: `judge unavailable: ${msg}`,
+    }));
+  }
+}
 
 function pruneWeakGenomes(genomes: StrategyGenome[], rewards: RewardBundle[]): StrategyGenome[] {
   const goals = [...new Set(genomes.map((g) => g.applies_to.goal_pattern))];
@@ -427,12 +565,15 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
         }
 
         if (mergeFiles && Object.keys(mergeFiles).length > 0) {
-          // Boundary enforcement: only merge files that are in task.target_files,
-          // same directory as a target, or test sidecars. Out-of-scope files are
-          // dropped from the merge set and recorded as boundary violations.
+          // Boundary enforcement (Mode F: escalation-aware):
+          //   1. Files in target_files / same directory / test sidecars → allowed unconditionally.
+          //   2. Files outside scope BUT declared via `ESCALATE: <file> | <reason>` in agent notes
+          //      → routed to LLM judge; approved ones merge with attempt.escalations entry.
+          //   3. Files outside scope without ESCALATE → rejected as boundary violation.
           const targetFiles = job.task?.target_files ?? [];
           const allowedFiles: string[] = [];
           const violations: string[] = [];
+          const pendingEscalations: EscalationCandidate[] = [];
 
           if (targetFiles.length === 0) {
             // No target — fall back to old behavior (allow everything).
@@ -440,14 +581,40 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
           } else {
             const targetSet = new Set(targetFiles);
             const targetDirs = new Set(targetFiles.map((f) => path.dirname(f)));
+            const escalationMap = parseEscalations(attempt.notes);
+
             for (const f of Object.keys(mergeFiles)) {
               const inTarget = targetSet.has(f);
               const sameDir = targetDirs.has(path.dirname(f));
               const isSidecar = /\.test\.tsx?$/.test(f) || /\.testUtil\.tsx?$/.test(f) || f.startsWith("tests/");
               if (inTarget || sameDir || isSidecar) {
                 allowedFiles.push(f);
+              } else if (escalationMap.has(f)) {
+                pendingEscalations.push({
+                  file: f,
+                  reason: escalationMap.get(f)!,
+                  diffPreview: mergeFiles[f].slice(0, 1500),
+                });
               } else {
                 violations.push(f);
+              }
+            }
+          }
+
+          // Run judge on escalation candidates (if any).
+          if (pendingEscalations.length > 0 && job.task) {
+            const verdicts = await judgeEscalations(job.task, pendingEscalations);
+            attempt.escalations = verdicts;
+            for (const v of verdicts) {
+              const tag =
+                v.verdict === "approved" ? "✓" : v.verdict === "conditional" ? "~" : "✗";
+              attempt.notes.push(
+                `escalation ${tag} ${v.file} (score=${v.judge_score.toFixed(2)}): ${v.judge_rationale.slice(0, 100)}`,
+              );
+              if (v.verdict === "approved" || v.verdict === "conditional") {
+                allowedFiles.push(v.file);
+              } else {
+                violations.push(v.file);
               }
             }
           }
@@ -463,10 +630,18 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
           if (Object.keys(filteredMerge).length > 0) {
             try {
               mergeFilesToProject(filteredMerge);
-              if (violations.length === 0) {
+              const escalationCount = (attempt.escalations ?? []).filter(
+                (e) => e.verdict === "approved" || e.verdict === "conditional",
+              ).length;
+              if (violations.length === 0 && escalationCount === 0) {
                 attempt.notes.push("merged to project source");
               } else {
-                attempt.notes.push(`merged to project source (${allowedFiles.length} of ${Object.keys(mergeFiles).length} files; ${violations.length} rejected)`);
+                const parts: string[] = [
+                  `${allowedFiles.length} of ${Object.keys(mergeFiles).length} files`,
+                ];
+                if (escalationCount > 0) parts.push(`${escalationCount} via escalation`);
+                if (violations.length > 0) parts.push(`${violations.length} rejected`);
+                attempt.notes.push(`merged to project source (${parts.join("; ")})`);
               }
             } catch (e) {
               attempt.notes.push(`merge failed: ${(e as Error).message.slice(0, 80)}`);

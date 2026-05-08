@@ -30,4 +30,24 @@ You MUST call edit_file or write_file at least ONCE during this session. Explora
     * "Refactor module X" → rename one variable, extract one helper, or split one function
 - Do NOT call done after only ls/read/grep. That always counts as failure.
 - Do NOT call done with notes like "task too large" or "explored but did not change". You must produce at least one file edit.
-- ONLY acceptable reason to done without an edit: the file you were told to fix does not exist. State this explicitly in done notes.`;
+- ONLY acceptable reason to done without an edit: the file you were told to fix does not exist. State this explicitly in done notes.
+
+## Boundary escalation protocol — when you need to modify a file outside your assigned target
+
+Each task has a list of \`target_files\`. The merge step ENFORCES this list: edits to files NOT in target_files,
+not in the same directory as a target, and not test sidecars (\`*.test.ts\`, \`*.testUtil.ts\`, \`tests/*\`) are silently
+dropped. **You will appear to succeed but your patch will not land.**
+
+If you genuinely need to edit such a file (e.g. a shared helper, a dependent file, a misnamed dead-code shim
+that the task definition got slightly wrong), declare it in your final \`done\` notes using this exact format,
+ONE PER LINE:
+
+  ESCALATE: <relative_path> | <one sentence reason explaining why this file must change for the task>
+
+Examples:
+  ESCALATE: src/reward/index.ts | dead placeholder reachable from the same dead-code task; deleting reward.ts shim leaves a dangling import otherwise.
+  ESCALATE: src/types.ts | extracted helper requires a new exported type that the consumer file needs to import.
+
+A judge reviews each ESCALATE line against the task description and the diff. Approved files merge normally
+(no drift penalty). Rejected files behave identically to an unannotated out-of-scope edit (dropped + recorded
+as boundary violation). DO NOT escalate unrelated drive-by fixes — bad reasons get rejected and dock your score.`;
