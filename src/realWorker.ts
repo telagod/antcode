@@ -76,7 +76,11 @@ export async function realAttempt(
     const focusPrompt = assignment ? buildFocusPrompt(assignment) : "";
     const discoveries = formatDiscoveriesForPrompt();
     const goalHint = task
-      ? `## Task\n${task.description}`
+      ? `## Task\n${task.description}${
+          task.target_files && task.target_files.length > 0
+            ? `\n\n**target_files** (STRICT — edits outside this list need ESCALATE in done notes):\n${task.target_files.map((f) => `  - ${f}`).join("\n")}`
+            : ""
+        }`
       : `## Goal\nImprove code quality in this TypeScript project. Look for: missing error handling, type safety issues, dead code, missing exports, or code that could be cleaner.`;
 
     const recon = getSharedRecon();

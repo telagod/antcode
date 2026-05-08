@@ -50,16 +50,17 @@ export function computeAlignment(
     return { alignment: 1, containment: 1 };
   }
   const targetSet = new Set(targetFiles);
-  const targetDirs = new Set(targetFiles.map((f) => path.dirname(f)));
 
+  // NOTE: same-directory was REMOVED in v6 — see cli.ts for rationale.
+  // alignment = exact in target_files OR approved escalation
+  // containment = alignment + sidecars (test files for target)
   let inTarget = 0;
   let contained = 0;
   for (const f of filesChanged) {
     if (targetSet.has(f) || approvedExtras.has(f)) {
-      // Approved escalations count as "in target" — agent's judgment was validated by judge.
       inTarget += 1;
       contained += 1;
-    } else if (isInSameDir(f, targetDirs) || isTestSidecar(f)) {
+    } else if (isTestSidecar(f)) {
       contained += 1;
     }
   }

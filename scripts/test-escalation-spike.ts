@@ -65,16 +65,23 @@ check(
 
 r = computeAlignment(["src/foo.ts", "src/baz.ts"], ["src/foo.ts"], new Set());
 check(
-  "without approved → alignment 0.5 (1 in target, 1 same-dir contained)",
-  r.alignment === 0.5 && r.containment === 1,
+  "v6 STRICT: same-dir is now drift (alignment=0.5, containment=0.5, NOT 1.0)",
+  r.alignment === 0.5 && r.containment === 0.5,
   `got align=${r.alignment} contain=${r.containment}`,
 );
 
 const r2 = computeAlignment(["src/foo.ts", "other/baz.ts"], ["src/foo.ts"], new Set());
 check(
-  "without approved + different dir → drift signal (containment=0.5)",
+  "different dir → drift signal (containment=0.5)",
   r2.alignment === 0.5 && r2.containment === 0.5,
   `got align=${r2.alignment} contain=${r2.containment}`,
+);
+
+const r3 = computeAlignment(["src/foo.ts", "src/foo.test.ts"], ["src/foo.ts"], new Set());
+check(
+  "test sidecar still contained (alignment=0.5, containment=1.0)",
+  r3.alignment === 0.5 && r3.containment === 1,
+  `got align=${r3.alignment} contain=${r3.containment}`,
 );
 
 r = computeAlignment(["src/foo.ts", "src/baz.ts"], ["src/foo.ts"], new Set(["src/baz.ts"]));
@@ -204,6 +211,24 @@ check(
   "A reward > B reward (approved beats rejected)",
   bundleA.semantic_confidence.score > bundleB.semantic_confidence.score,
   `A=${bundleA.semantic_confidence.score} vs B=${bundleB.semantic_confidence.score}`,
+);
+
+// Case F: v5 regression — agent silently edits sibling file in src/ without ESCALATE.
+// In v5 (with same-dir), this slipped through with alignment=0 but no drift flag.
+// In v6 (strict), this MUST trigger goal_drift since containment=0.
+const caseF = makeAttempt({
+  files_changed: ["src/storage.ts"],
+  target_files: ["src/cli.ts"],
+});
+const bundleF = buildRewardBundle(caseF, DEFAULT_WEIGHTS);
+console.log(
+  `  F (v5 silent sibling drift): reward=${bundleF.reward.toFixed(3)}  sem=${bundleF.semantic_confidence.score.toFixed(3)}  guard=${JSON.stringify(bundleF.guard_flags)}`,
+);
+check("F: v6 catches silent sibling drift (goal_drift flag)", bundleF.guard_flags.includes("goal_drift"));
+check(
+  "F: v6 punishes harder than v5 perfect (sem < 0.95)",
+  bundleF.semantic_confidence.score < 0.95,
+  `sem=${bundleF.semantic_confidence.score}`,
 );
 
 console.log(`\n━━━ ${pass} passed, ${fail} failed ━━━`);

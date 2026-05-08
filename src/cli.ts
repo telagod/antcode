@@ -565,11 +565,15 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
         }
 
         if (mergeFiles && Object.keys(mergeFiles).length > 0) {
-          // Boundary enforcement (Mode F: escalation-aware):
-          //   1. Files in target_files / same directory / test sidecars → allowed unconditionally.
+          // Boundary enforcement (Mode F: escalation-aware, strict same-file matching):
+          //   1. Files in target_files OR test sidecars (*.test.ts, *.testUtil.ts) → allowed unconditionally.
           //   2. Files outside scope BUT declared via `ESCALATE: <file> | <reason>` in agent notes
           //      → routed to LLM judge; approved ones merge with attempt.escalations entry.
           //   3. Files outside scope without ESCALATE → rejected as boundary violation.
+          //
+          // NOTE: same-directory was REMOVED in v6 — it made all of `src/*.ts` mutually
+          // in-scope (e.g. cli.ts vs storage.ts both have dirname=src), which silently
+          // hid genuine drift and never triggered the escalation pathway.
           const targetFiles = job.task?.target_files ?? [];
           const allowedFiles: string[] = [];
           const violations: string[] = [];
@@ -580,14 +584,12 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
             allowedFiles.push(...Object.keys(mergeFiles));
           } else {
             const targetSet = new Set(targetFiles);
-            const targetDirs = new Set(targetFiles.map((f) => path.dirname(f)));
             const escalationMap = parseEscalations(attempt.notes);
 
             for (const f of Object.keys(mergeFiles)) {
               const inTarget = targetSet.has(f);
-              const sameDir = targetDirs.has(path.dirname(f));
               const isSidecar = /\.test\.tsx?$/.test(f) || /\.testUtil\.tsx?$/.test(f) || f.startsWith("tests/");
-              if (inTarget || sameDir || isSidecar) {
+              if (inTarget || isSidecar) {
                 allowedFiles.push(f);
               } else if (escalationMap.has(f)) {
                 pendingEscalations.push({
