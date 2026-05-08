@@ -1,14 +1,17 @@
 import type { Model } from "@mariozechner/pi-ai";
 
-export const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "https://sub.foxnio.com/v1";
+export const BASE_URL = process.env.ANTCODE_LLM_BASE_URL ?? "http://45.87.155.39:3000";
 export const API_KEY = process.env.ANTCODE_LLM_API_KEY ?? "";
-export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "minimaxai/minimax-m2.7";
+export const MODEL = process.env.ANTCODE_LLM_MODEL ?? "claude-opus-4-7";
+export const API_KIND = (process.env.ANTCODE_LLM_API ?? "anthropic-messages") as
+  | "openai-completions"
+  | "anthropic-messages";
 
-export function createPiModel(): Model<"openai-completions"> {
+export function createPiModel(): Model<typeof API_KIND> {
   return {
     id: MODEL,
     name: MODEL,
-    api: "openai-completions",
+    api: API_KIND,
     provider: "antcode-pi",
     baseUrl: BASE_URL,
     reasoning: false,

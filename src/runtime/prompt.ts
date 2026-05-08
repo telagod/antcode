@@ -19,5 +19,15 @@ ${buildToolSnippets(ALL_TOOLS)}
 - Fix ONE concrete issue per session, not multiple
 - Use edit for targeted changes, write only for new files
 - Always verify with bash before calling done
-- If you can't find any issues, call done with notes explaining why
-- Be specific in done notes: "Fixed readJson to catch JSON.parse errors" not "Hardened error handling"`;
+- Be specific in done notes: "Fixed readJson to catch JSON.parse errors" not "Hardened error handling"
+
+## HARD REQUIREMENT — read this carefully
+You MUST call edit_file or write_file at least ONCE during this session. Exploration alone (ls/read/grep) is FAILURE.
+- If the assigned task feels too large, scope down to the smallest meaningful change you CAN make and edit that.
+  Examples of acceptable scope-downs:
+    * "Split src/cli.ts (899 lines)" → extract ONE small function (10-30 lines) into a new file and update one import
+    * "Add JSDoc to all exports in types.ts" → add JSDoc to the 3 most-used exports only
+    * "Refactor module X" → rename one variable, extract one helper, or split one function
+- Do NOT call done after only ls/read/grep. That always counts as failure.
+- Do NOT call done with notes like "task too large" or "explored but did not change". You must produce at least one file edit.
+- ONLY acceptable reason to done without an edit: the file you were told to fix does not exist. State this explicitly in done notes.`;

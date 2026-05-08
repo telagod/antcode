@@ -9,6 +9,10 @@ export interface RealTask {
     test_command?: string;
     expected_output?: string;
   };
+  /** 1 (highest) to 5 (lowest). Lower number = scheduled first. Default 3. */
+  priority?: number;
+  /** True if any target file is "large" (>500 lines). Sampler avoids large-patch genomes when true. */
+  is_large?: boolean;
 }
 
 export const realTasks: RealTask[] = [

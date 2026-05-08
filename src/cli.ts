@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 import {
   Attempt,
   ExperienceKey,
@@ -18,7 +19,8 @@ import {
   writeJson,
   globalBuffer,
 } from "./storage";
-import { buildRewardBundle, loadWeights } from "./reward/index";
+import { buildRewardBundle } from "./reward/calculator";
+import { loadWeights } from "./reward/weights";
 import { canMutate, mutateGenome, randomExplore } from "./mutation";
 import { mockAttempt } from "./simulator";
 import { realAttempt, runSharedRecon } from "./realWorker";
@@ -43,7 +45,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const CONCURRENCY = Number(process.env.ANTCODE_CONCURRENCY ?? 3);
+const CONCURRENCY = Number(process.env.ANTCODE_CONCURRENCY ?? 1);
 
 const experienceKeys: ExperienceKey[] = [
   {
@@ -78,7 +80,7 @@ function loadPolicy(): PolicyConfig {
       forbid_if_guard_flags: ["weakened_assertion", "hidden_config_bypass"],
     },
     promotion_rule: {
-      min_samples: 2,
+      min_samples: 1,
       semantic_success_improvement: 0.08,
       max_diff_cost_ratio: 1.5,
       boundary_violation: "no_increase",
@@ -244,12 +246,18 @@ function runTournaments(genomes: StrategyGenome[], policy: PolicyConfig): void {
   }
 }
 
-function pickGenomeForKey(genomes: StrategyGenome[], key: ExperienceKey): StrategyGenome | undefined {
+function pickGenomeForKey(genomes: StrategyGenome[], key: ExperienceKey, isLargeTask = false): StrategyGenome | undefined {
   const positives = readJsonl<StrategyPheromone>(storage.positiveFile);
   const negatives = readJsonl<NegativePheromone>(storage.negativeFile);
   const totalSamplesAll = positives.reduce((s, p) => s + p.sample_count, 0);
+  // For large tasks, exclude genomes whose patch_granularity is "large" — those tend to
+  // do exploratory big-bang refactors that finish without changing files. Prefer tiny/small/medium.
+  const filtered = isLargeTask
+    ? genomes.filter((g) => g.action_strategy.patch_granularity !== "large")
+    : genomes;
+  const pool = filtered.length > 0 ? filtered : genomes;
   try {
-    return sampleGenome(genomes, key, positives, negatives, undefined, true, false, totalSamplesAll);
+    return sampleGenome(pool, key, positives, negatives, undefined, true, false, totalSamplesAll);
   } catch {
     return undefined;
   }
@@ -355,10 +363,14 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
       const assignments = assignFocusAreas(batchSize);
       const jobs: Array<{ key: ExperienceKey; genome: StrategyGenome; task: typeof realTasks[0] | undefined; assignment: typeof assignments[0] }> = [];
 
+      // Priority-ordered round-robin through tasks (lowest priority number first).
+      // Replaces previous random pick which made taskGen's priority sort meaningless.
+      const orderedTasks = [...activeTasks].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
+
       for (let j = 0; j < batchSize; j++) {
-        const task = activeTasks[Math.floor(Math.random() * activeTasks.length)];
+        const task = orderedTasks[(i + j) % orderedTasks.length];
         const key = task.key;
-        const genome = pickGenomeForKey(genomes, key) ?? genomes.find((g) => g.status === "active") ?? genomes[0];
+        const genome = pickGenomeForKey(genomes, key, !!task.is_large) ?? genomes.find((g) => g.status === "active") ?? genomes[0];
         if (!genome) continue;
         jobs.push({ key, genome, task, assignment: assignments[j] });
       }

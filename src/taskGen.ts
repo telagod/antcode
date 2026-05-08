@@ -153,8 +153,9 @@ function parseRawTasks(raw: string): RawTask[] {
   return parsed as RawTask[];
 }
 
-function toRealTask(raw: RawTask): RealTask {
+function toRealTask(raw: RawTask, fileSizes: Record<string, number>): RealTask {
   const risk = (["low", "low_to_medium", "medium", "high"].includes(raw.risk_level) ? raw.risk_level : "low_to_medium") as ExperienceKey["risk_level"];
+  const isLarge = raw.target_files.some((f) => (fileSizes[f] ?? 0) > 500);
   return {
     key: {
       goal_pattern: raw.goal_pattern,
@@ -169,6 +170,8 @@ function toRealTask(raw: RawTask): RealTask {
       typecheck: true,
       test_command: raw.goal_pattern === "add_test" ? undefined : "npx tsx src/cli.ts run-experiment 2",
     },
+    priority: typeof raw.priority === "number" ? raw.priority : 3,
+    is_large: isLarge,
   };
 }
 
@@ -193,7 +196,7 @@ async function generateTaskTextWithPi(prompt: { instructions: string; input: str
     .join("");
 }
 
-function rawTasksToRealTasks(rawTasks: RawTask[]): RealTask[] {
+function rawTasksToRealTasks(rawTasks: RawTask[], fileSizes: Record<string, number>): RealTask[] {
   // filter out add_test tasks if no test framework is installed
   const hasTestFramework = fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/vitest")) ||
     fs.existsSync(path.resolve(PROJECT_SRC, "../node_modules/jest"));
@@ -204,10 +207,10 @@ function rawTasksToRealTasks(rawTasks: RawTask[]): RealTask[] {
   const tasks = filtered
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 5)
-    .map((task, index) => toRealTask(validateRawTask(task, index)))
+    .map((task, index) => toRealTask(validateRawTask(task, index), fileSizes))
     .map((task, index) => validateRealTask(task, index));
   console.log(`  taskGen: discovered ${tasks.length} tasks${rawTasks.length !== filtered.length ? ` (filtered ${rawTasks.length - filtered.length} test tasks — no test framework)` : ""}`);
-  for (const t of tasks) console.log(`    - [${t.key.goal_pattern}] ${t.description.slice(0, 80)}`);
+  for (const t of tasks) console.log(`    - [${t.key.goal_pattern}]${t.is_large ? " [LARGE]" : ""} p=${t.priority} ${t.description.slice(0, 70)}`);
   return tasks;
 }
 
@@ -217,15 +220,21 @@ export async function generateTasks(): Promise<RealTask[]> {
     return [];
   }
 
-  const files = scanSourceFiles();
-  const prompt = buildScanPrompt(files);
-  const fullText = await generateTaskTextWithPi(prompt);
-
-  if (!fullText) return [];
-
   try {
-    return rawTasksToRealTasks(parseRawTasks(fullText));
+    const files = scanSourceFiles();
+    const fileSizes: Record<string, number> = {};
+    for (const [name, content] of Object.entries(files)) {
+      fileSizes[name] = content.split("\n").length;
+    }
+    const prompt = buildScanPrompt(files);
+    const fullText = await generateTaskTextWithPi(prompt);
+
+    if (!fullText) return [];
+
+    return rawTasksToRealTasks(parseRawTasks(fullText), fileSizes);
   } catch (e) {
-    failGenerateTasks("generateTasks failed while parsing or validating upstream results", e);
+    const details = e instanceof Error ? e.message : typeof e === "string" ? e : undefined;
+    console.error(`  taskGen: failed to generate tasks${details ? `: ${details}` : ""}`);
+    return [];
   }
 }
