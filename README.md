@@ -139,36 +139,106 @@ Artifact layout:
 
 ## Architecture
 
-```text
-Goal / Work Capsule
-        |
-        v
-ExperienceKey -----------------------------+
-        |                                  |
-        v                                  |
-Strategy Sampler <--- Pheromones <--- Reward Engine
-        |                                  ^
-        v                                  |
-Worker Attempt -> Verification -> Attempt + Patch Artifact
-        |                                  |
-        v                                  |
-Mutation / Crossover / Tournament --------+
+End-to-end view of one real-mode iteration (v0.8.x with strict boundary + Mode F escalation):
+
+```mermaid
+flowchart TD
+    Goal["Goal / Work Capsule<br/>(target_files, description)"] --> EK[ExperienceKey]
+    EK --> Sampler[Strategy Sampler]
+    Pher[(Pheromones)] --> Sampler
+    NegPher[(Negative Pheromones)] --> Sampler
+    Sampler -->|StrategyGenome| Worker[Real Worker]
+
+    Worker -->|prompt + STRICT target_files<br/>+ ESCALATE protocol| Agent[pi-agent-core<br/>read / edit / bash / done]
+    Agent -->|done notes + files_changed| Parse{parseEscalations}
+    Parse -->|ESCALATE line found| Judge[judgeEscalations<br/>LLM batch · fail-closed]
+    Parse -->|no escalations| Merge
+
+    Judge -->|approved set| Merge{Merge Gate<br/>strict same-file}
+    Judge -->|rejected| BV[boundary_violation]
+
+    Merge -->|target_files ∩ changed| MainWT[Main Worktree]
+    Merge -->|sidecar test files| MainWT
+    Merge -->|escalation approved| MainWT
+    Merge -->|else| BV
+
+    MainWT --> Verify[Verify · tsc / tests]
+    BV --> Verify
+    Verify --> Reward[Reward Engine]
+
+    Reward -->|update| Pher
+    Reward -->|drift / violation| NegPher
+    Reward --> Tournament{Mutation /<br/>Crossover /<br/>Tournament}
+    Tournament -->|promote / suppress / quarantine| GenomePool[(Strategy Genomes)]
+    GenomePool --> Sampler
+
+    classDef store fill:#1f2937,stroke:#60a5fa,color:#e5e7eb;
+    classDef gate fill:#1e3a8a,stroke:#93c5fd,color:#fff;
+    classDef reject fill:#7f1d1d,stroke:#fca5a5,color:#fff;
+    class Pher,NegPher,GenomePool store;
+    class Merge,Judge,Parse,Tournament gate;
+    class BV reject;
+```
+
+Reward bundle composition (v0.8.x):
+
+```mermaid
+flowchart LR
+    TF[target_files] --> Align["alignment = #124;∩#124; / #124;changed#124;"]
+    CF[files_changed] --> Align
+    CF --> Cont["containment = #124;∩ + sidecar + approved#124; / #124;changed#124;"]
+    TF --> Cont
+    Approved[approvedExtras<br/>from Mode F judge] --> Cont
+
+    Align -->|≥ 0.99| Bonus1[+0.15 semantic]
+    Align -->|≥ 0.50| Bonus2[+0.075 semantic]
+    Cont -->|< 0.30| Drift[goal_drift flag<br/>−0.40 semantic]
+    Approved -->|approved > 0 and 0 rejected| GJ[+0.10 good-judgment]
+
+    Bonus1 --> Sem[semantic_confidence]
+    Bonus2 --> Sem
+    Drift --> Sem
+    GJ --> Sem
+
+    Sem --> Final[RewardBundle]
+    DiffSize[diff_size] --> Final
+    Tokens[tokens] --> Final
+    Cache[cache_hits] --> Final
+    Guard["guard_flags<br/>boundary_violation / goal_drift"] --> Final
 ```
 
 Core modules:
 
 | Module | Responsibility |
 |---|---|
-| `src/cli.ts` | CLI entrypoint, experiment loop, reporting, artifact commands |
-| `src/realWorker.ts` | Real attempt orchestration and shared reconnaissance |
-| `src/runtime/` | Single pi-agent-core runtime scaffold and AntCode runtime contract |
-| `src/tools/` | Universal tool definitions and local operations backend |
+| `src/cli.ts` | CLI entrypoint, experiment loop, `parseEscalations`, `judgeEscalations`, merge gate |
+| `src/realWorker.ts` | Real attempt orchestration; injects `target_files` bullet list into goalHint |
+| `src/runtime/prompt.ts` | Agent system prompt — STRICT target_files + ESCALATE protocol |
+| `src/runtime/` | pi-agent-core runtime scaffold and AntCode runtime contract |
+| `src/tools/` | Universal tool definitions (`read` / `edit` / `bash` / `done` / …) and local backend |
 | `src/verify.ts` | Workbench slots, patch artifacts, approval, rejection, rollback |
-| `src/reward.ts` | Reward calculation and failure-mode signal |
+| `src/reward/calculator.ts` | Alignment, containment, escalation-aware semantic scoring |
+| `src/reward/index.ts` | Reward bundle assembly and failure-mode signal |
 | `src/mutation.ts` / `src/mutationOps.ts` | Evidence-driven strategy mutation |
 | `src/crossover.ts` | Strategy crossover between strong candidates |
-| `src/tournament.ts` | Parent-child promotion/suppression decisions |
+| `src/tournament.ts` | Parent-child promotion / suppression decisions |
 | `src/storage.ts` | JSON / JSONL storage primitives |
+
+### Mode F — boundary escalation
+
+When an agent believes its assigned `target_files` is wrong, it must declare its intent explicitly in the `done` notes:
+
+```text
+ESCALATE: src/foo.ts | target_files pointed at cli.ts but the bug lives in foo.ts
+```
+
+The CLI parses these declarations, batches them into a single LLM judge call (`fail-closed`: timeout or parse error → rejected), and only approved files bypass the strict same-file merge gate. Approved escalations:
+
+- count toward `containment` (do not trigger `goal_drift`)
+- award a `+0.10` good-judgment bonus when none are rejected
+- are recorded on the attempt for replay and analysis
+
+Silent substitution — editing a different file without an `ESCALATE` line — is rejected as `boundary_violation` and surfaced as a negative pheromone signal.
 
 ## Runtime state
 
