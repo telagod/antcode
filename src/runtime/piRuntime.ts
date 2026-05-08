@@ -9,8 +9,9 @@ import { SYSTEM_PROMPT } from "./prompt";
 import { createRuntimeTelemetry } from "./observability";
 import type { AgentRunInput, AgentRunResult, AgentRuntime, TokenUsage } from "./types";
 
-const AGENT_TIMEOUT_MS = Number(process.env.ANTCODE_AGENT_TIMEOUT_MS ?? 90000);
-const AGENT_ABORT_GRACE_MS = Number(process.env.ANTCODE_AGENT_ABORT_GRACE_MS ?? 1500);
+const AGENT_TIMEOUT_MS = Number(process.env.ANTCODE_AGENT_TIMEOUT_MS ?? 300000);
+const AGENT_ABORT_GRACE_MS = Number(process.env.ANTCODE_AGENT_ABORT_GRACE_MS ?? 2000);
+const MAX_TOOL_CALLS = Number(process.env.ANTCODE_MAX_TOOL_CALLS ?? 20);
 
 function toUsage(usage: unknown): TokenUsage {
   const u = usage as { input?: number; output?: number; cacheRead?: number } | undefined;
@@ -32,6 +33,7 @@ function makePiTool(def: ToolDef, ops: AllOps, cwd: string, state: {
   testsAdded: number;
   filesChanged: Set<string>;
   bashResults: string[];
+  toolCount: number;
   isTimedOut: () => boolean;
   remainingMs: () => number;
 }): AgentTool<any, { name: string }> {
@@ -51,6 +53,8 @@ function makePiTool(def: ToolDef, ops: AllOps, cwd: string, state: {
       }
 
       const args = (params ?? {}) as Record<string, unknown>;
+
+      // done → signal completion
       if (def.name === "done") {
         state.notes.push(...(Array.isArray(args.notes) ? args.notes.map(String) : []));
         state.testsAdded = typeof args.tests_added === "number" ? args.tests_added : 0;
@@ -61,16 +65,40 @@ function makePiTool(def: ToolDef, ops: AllOps, cwd: string, state: {
         };
       }
 
+      // bash → fast commands run immediately; slow build/test/typecheck commands also run
+      // immediately (synchronously) so the agent gets real feedback and won't make
+      // cascading bad edits without knowing the build state.
+      // The original "queue and flush on done" approach breaks the feedback loop —
+      // the agent queues bash, gets immediate fake success, keeps editing blindly,
+      // then all queued bash run too late to纠正 anything.
       if (def.name === "bash") {
-        const requestedTimeout = typeof args.timeout === "number" ? args.timeout : 30000;
-        args.timeout = Math.max(1000, Math.min(requestedTimeout, state.remainingMs() - 250));
+        const rawCommand = String(args.command ?? "");
+        const normalized = rawCommand.toLowerCase();
+        const isBlocked = (normalized.includes("run-experiment") || normalized.includes("demo:real"))
+          && (normalized.includes("--real") || normalized.includes("demo:real"));
+        if (isBlocked) {
+          return { content: [{ type: "text", text: "exit=126\nblocked: nested real AntCode runs are not allowed from inside a workbench" }], details: { name: "bash" } };
+        }
+        const requestedTimeout = typeof args.timeout === "number" ? args.timeout : 60000;
+        const cappedTimeout = Math.max(1000, Math.min(requestedTimeout, state.remainingMs() - 500));
+        try {
+          const { exitCode, stdout, stderr } = ops.exec(rawCommand, cwd, cappedTimeout);
+          const out = [stdout, stderr].filter(Boolean).join("\n").slice(0, 4000);
+          state.bashResults.push(`exit=${exitCode}\n${out}`);
+          return { content: [{ type: "text", text: `exit=${exitCode}\n${out}` }], details: { name: "bash" } };
+        } catch (e: unknown) {
+          const err = e as { status?: number; stdout?: Buffer; stderr?: Buffer; message?: string };
+          const out = [err.stdout?.toString(), err.stderr?.toString(), err.message].filter(Boolean).join("\n").slice(0, 4000);
+          state.bashResults.push(`exit=${err.status ?? 1}\n${out}`);
+          return { content: [{ type: "text", text: `exit=${err.status ?? 1}\n${out}` }], details: { name: "bash" } };
+        }
       }
 
+      // fast tools: run immediately
       const output = def.execute(args, ops, cwd);
       if (def.name === "write" || def.name === "edit") {
         if (typeof args.path === "string") state.filesChanged.add(args.path);
       }
-      if (def.name === "bash") state.bashResults.push(output);
       return {
         content: [{ type: "text", text: output }],
         details: { name: def.name },
@@ -91,6 +119,7 @@ export class PiAgentRuntime implements AgentRuntime {
       testsAdded: 0,
       filesChanged: new Set<string>(),
       bashResults: [] as string[],
+      toolCount: 0,
       isTimedOut: () => Date.now() >= deadlineAt,
       remainingMs: () => Math.max(0, deadlineAt - Date.now()),
     };
@@ -113,6 +142,16 @@ export class PiAgentRuntime implements AgentRuntime {
         if (state.isTimedOut()) {
           telemetryControl.record("tool_blocked", `${toolCall.name}: deadline exceeded`);
           return { block: true, reason: "agent deadline exceeded before tool execution" };
+        }
+        // max tools limit: force done when limit is reached
+        if (toolCall.name !== "done") {
+          state.toolCount += 1;
+          if (state.toolCount > MAX_TOOL_CALLS) {
+            telemetryControl.record("tool_blocked", `${toolCall.name}: max ${MAX_TOOL_CALLS} tools reached`);
+            // force signal done to stop the agent
+            state.notes.push(`[forced done: max ${MAX_TOOL_CALLS} tool calls reached]`);
+            return { terminate: true };
+          }
         }
         if (toolCall.name === "bash") {
           const command = String((args as { command?: unknown }).command ?? "").toLowerCase();

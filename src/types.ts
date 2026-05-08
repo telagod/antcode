@@ -401,32 +401,77 @@ export interface MutationEvent {
   status: "candidate" | "promoted" | "suppressed" | "quarantined" | "keep_both";
 }
 
+/**
+ * Tunable coefficients for the reward formula implemented in
+ * `buildRewardBundle` (`src/reward/calculator.ts`). Persisted at
+ * `.antcode/reward-weights.json`; defaults live in `DEFAULT_WEIGHTS`
+ * (`src/reward/weights.ts`) and are clamped to safe ranges by
+ * `clampWeights`.
+ *
+ * The final reward (clamped to `[0, 1]`) is approximately:
+ * ```
+ *   reward = success_base[result]
+ *          + semantic_confidence · semantic_weight
+ *          - diff_penalty - file_penalty - guard_penalty - token_penalty
+ *          + cache_bonus
+ * ```
+ * where `semantic_confidence` itself is built up additively from the
+ * `*_bonus` / `*_penalty` weights below.
+ *
+ * Adjusted online by `recalibrateWeights` in `src/reward/calibrator.ts`,
+ * which gradient-descends MSE against historical rewards and writes a
+ * {@link WeightCalibrationRecord} per run.
+ */
 export interface RewardWeights {
+  /** Base reward when `Attempt.result === "success"`. Clamped `[0, 1]`. Default 0.7. */
   success_base_success: number;
+  /** Base reward when `Attempt.result === "blocked"` (agent stopped and asked for help). Clamped `[0, 1]`. Default 0.2. */
   success_base_blocked: number;
+  /** Base reward when `Attempt.result === "failure"`. Intentionally above 0 so that honest failure beats a blocked stall. Clamped `[0, 1]`. Default 0.35. */
   success_base_failure: number;
+  /** Multiplier on `semantic_confidence.score` when summing into the final reward. Clamped `[0, 1]`. Default 0.25. */
   semantic_weight: number;
+  /** Divisor on `Attempt.diff_lines` for the diff-size penalty (`min(0.25, diff_lines / coeff)`). Larger ⇒ more lenient. Clamped `[100, 10000]`. Default 1000. */
   diff_penalty_coeff: number;
+  /** Divisor on `files_changed.length` for the file-count penalty (`min(0.15, files / coeff)`). Larger ⇒ more lenient. Clamped `[5, 100]`. Default 20. */
   file_penalty_coeff: number;
+  /** Per-flag penalty applied for each entry in `RewardBundle.guard_flags`. Clamped `[0.05, 1]`. Default 0.2. */
   guard_penalty_coeff: number;
+  /** Divisor on `input_tokens + output_tokens` for the token-cost penalty (`min(0.15, total / coeff)`). Larger ⇒ more lenient. Clamped `[10000, 200000]`. Default 50000. */
   token_penalty_coeff: number;
+  /** Multiplier on the cache-hit ratio (`cached_tokens / input_tokens`) for the cache bonus. Clamped `[0, 0.5]`. Default 0.05. */
   cache_bonus_coeff: number;
+  /** Added to `semantic_confidence` when `Attempt.tests_added > 0`. Clamped `[0, 0.5]`. Default 0.12. */
   test_bonus: number;
+  /** Added to `semantic_confidence` when any command in `Attempt.commands_run` mentions `"test"`. Clamped `[0, 0.5]`. Default 0.08. */
   test_execution_bonus: number;
+  /** Added to `semantic_confidence` when `Attempt.boundary_violations` is empty. Clamped `[0, 0.5]`. Default 0.05. */
   boundary_bonus: number;
+  /** Subtracted from `semantic_confidence` when `weakened_assertion` or `hidden_config_bypass` is detected by `detectGuardFlags`. Clamped `[0.1, 1]`. Default 0.55. */
   reward_hacking_penalty: number;
-  /** Bonus added to semantic_confidence when alignment === 1.0 (all edited files in target_files). */
+  /** Bonus added to semantic_confidence when alignment === 1.0 (all edited files in target_files); half-credit when alignment ≥ 0.5. Clamped `[0, 0.5]`. Default 0.15. */
   alignment_bonus?: number;
-  /** Penalty subtracted from semantic_confidence when containment < drift_threshold. */
+  /** Penalty subtracted from semantic_confidence when containment < drift_threshold (also adds the `goal_drift` guard flag). Clamped `[0, 1]`. Default 0.4. */
   drift_penalty?: number;
-  /** containment ratio below which we flag goal_drift. Range 0..1. Default 0.3. */
+  /** Containment ratio below which we flag `goal_drift` and apply `drift_penalty`. Range 0..1. Default 0.3. */
   drift_threshold?: number;
 }
 
+/**
+ * Audit record produced by `recalibrateWeights` in
+ * `src/reward/calibrator.ts` each time a gradient-descent pass runs over
+ * historical (Attempt, RewardBundle) pairs. Appended to
+ * `.antcode/weight-calibration-history.json`; the file is capped at the
+ * 20 most recent records by `recordCalibration`.
+ */
 export interface WeightCalibrationRecord {
+  /** ISO 8601 UTC timestamp at which this calibration completed. */
   timestamp: string;
+  /** Snapshot of {@link RewardWeights} after the descent step (post-clamp). */
   weights: RewardWeights;
+  /** Mean-squared error of the calibrated weights against the historical reward sample, lower is better. */
   mse: number;
+  /** Number of (Attempt, RewardBundle) pairs that fed the descent step. */
   samples_used: number;
 }
 

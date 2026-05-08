@@ -11,8 +11,22 @@ export interface SharedInsight {
 }
 
 export function gatherInsights(root: string, goalPattern: string, limit = 5): SharedInsight[] {
-  const attempts = tryReadJsonl<Attempt>(antcodePath(root, "attempts.jsonl"), []).value;
-  const rewards = tryReadJsonl<RewardBundle>(antcodePath(root, "reward-bundles.jsonl"), []).value;
+  let attempts: Attempt[] = [];
+  let rewards: RewardBundle[] = [];
+
+  try {
+    attempts = tryReadJsonl<Attempt>(antcodePath(root, "attempts.jsonl"), []).value;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`gatherInsights: failed to read attempts file: ${message}`);
+  }
+
+  try {
+    rewards = tryReadJsonl<RewardBundle>(antcodePath(root, "reward-bundles.jsonl"), []).value;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`gatherInsights: failed to read rewards file: ${message}`);
+  }
 
   const rewardMap = new Map(rewards.map((r) => [r.attempt_id, r]));
   const relevant = attempts

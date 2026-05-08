@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mutateGenome } from "./mutation.ts";
+import { mutateGenome, randomExplore } from "./mutation.ts";
 import { applyOneMutation } from "./mutationOps.ts";
 import type { Attempt, MutationEvent, StrategyGenome } from "./types.ts";
 
@@ -96,4 +96,30 @@ test("mutateGenome falls back to a safe mutation type when no mutation handlers 
   const { event } = mutateGenome(parent, "duplicate_effort", [], 1, ["duplicate_effort"]);
 
   assert.equal(event.mutation.type, "unknown_mutation");
+});
+
+test("randomExplore mutates context_strategy.max_files via the shared getField/setField helpers", () => {
+  const parent = makeGenome();
+  // Deterministic random: 0.0 picks the first SAFE_RANDOM_RULES entry
+  // ({ field: "context_strategy.max_files", delta: 1, min: 2, max: 14 }).
+  const result = randomExplore(parent, 7, () => 0);
+
+  assert.ok(result, "randomExplore should produce a child for a valid genome");
+  const { child, event } = result;
+
+  // Field actually changed on the child (shared setField from mutationOps reaches the nested path).
+  assert.equal(child.context_strategy.max_files, parent.context_strategy.max_files + 1);
+  // Parent must not be mutated.
+  assert.equal(parent.context_strategy.max_files, 5);
+
+  // Event records the before/after via the field path.
+  assert.deepEqual(event.mutation.changed["context_strategy.max_files"], {
+    from: 5,
+    to: 6,
+  });
+  assert.equal(event.mutation.type, "random_exploration");
+  assert.equal(event.id, "mut_0007");
+  assert.equal(child.parent_id, parent.id);
+  assert.equal(child.generation, parent.generation + 1);
+  assert.equal(child.status, "candidate");
 });

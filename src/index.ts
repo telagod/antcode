@@ -1,6 +1,18 @@
 export * from "./types";
 export * from "./sampler";
-export * from "./reward";
+export { buildRewardBundle, detectGuardFlags } from "./reward/calculator";
+export {
+  loadWeights,
+  saveWeights,
+  resetWeights,
+  DEFAULT_WEIGHTS,
+  clampWeights,
+  recordCalibration,
+  getCalibrationHistory,
+  type RewardWeights,
+  type WeightCalibrationRecord,
+} from "./reward/weights";
+export { calibrateWeights, prepareCalibrationSamples } from "./reward/calibrator";
 export * from "./failureMode";
 export * from "./mutation";
 export * from "./mutationOps";

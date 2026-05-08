@@ -1,5 +1,5 @@
 import { Attempt, FailureMode, MutationEvent, PolicyConfig, RewardBundle, StrategyGenome } from "./types";
-import { applyOneMutation } from "./mutationOps";
+import { applyOneMutation, getField, setField } from "./mutationOps";
 
 function cloneStrategyGenome(value: StrategyGenome): StrategyGenome {
   return structuredClone(value);
@@ -13,6 +13,10 @@ function nextId(prefix: string, n: number): string {
 // ── Random exploration mutations ──
 // When mutation threshold isn't reached, still occasionally explore
 // with safe random tweaks to avoid local optima.
+//
+// Path traversal helpers (`getField`, `setField`) are imported from
+// `./mutationOps` so this module benefits from the same path validation
+// and prototype-pollution guards that `applyOneMutation` already uses.
 
 const SAFE_RANDOM_RULES = [
   { field: "context_strategy.max_files", delta: 1, min: 2, max: 14 },
@@ -20,17 +24,6 @@ const SAFE_RANDOM_RULES = [
   { field: "boundary_strategy.max_diff_lines", delta: 20, min: 40, max: 500 },
   { field: "boundary_strategy.max_diff_lines", delta: -20, min: 40, max: 500 },
 ];
-
-function getField(obj: any, path: string): unknown {
-  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
-}
-
-function setField(obj: any, path: string, value: unknown): void {
-  const keys = path.split(".");
-  const last = keys.pop()!;
-  const target = keys.reduce((o, k) => o[k], obj);
-  target[last] = value;
-}
 
 export function randomExplore(
   parent: StrategyGenome,
@@ -44,7 +37,7 @@ export function randomExplore(
   child.status = "candidate";
   child.id = `${parent.id.replace(/_v\d+$/, "")}_v${child.generation}`;
 
-  const before = getField(child, rule.field);
+  const before = getField<number>(child, rule.field);
   if (typeof before !== "number") return null;
 
   let next = before + rule.delta;

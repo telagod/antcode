@@ -68,6 +68,7 @@ export class StorageError extends Error {
 export interface ReadJsonResult<T> {
   value: T;
   found: boolean;
+  error?: StorageError;
 }
 
 export function ensureDir(dir: string): void {
@@ -225,11 +226,14 @@ export function readJsonl<T>(file: string): T[] {
       }
       values.push(parsed as T);
     } catch (error) {
+      // Strict: fail fast with structured error so callers can distinguish
+      // a corrupted store from a missing one. `tryReadJsonl` is the graceful
+      // wrapper that catches this and returns the fallback.
       const message = error instanceof Error ? error.message : String(error);
       const isLastLine = index === rawLines.length - 1;
       const hasTrailingNewline = content.endsWith("\n") || content.endsWith("\r");
       const partial = isLastLine && !hasTrailingNewline;
-      const partialHint = partial ? " The final line may be partial or truncated." : "";
+      const partialHint = partial ? " (final line may be partial)" : "";
       throw new StorageError({
         code: "PARSE_FAILED",
         file,
@@ -237,7 +241,7 @@ export function readJsonl<T>(file: string): T[] {
         cause: error,
         line: index + 1,
         partial,
-        message: `Failed to parse JSONL from ${file} at line ${index + 1}: malformed JSON entry.${partialHint} ${message}`,
+        message: `Failed to parse JSONL from ${file} at line ${index + 1}: ${message}${partialHint}`,
       });
     }
   }
@@ -357,7 +361,20 @@ export class BufferedStorage {
       entry.timer = setTimeout(() => this.flushFile(file), this.flushIntervalMs);
       this.buffers.set(file, entry);
     }
-    entry.lines.push(JSON.stringify(value));
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(value);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new StorageError({
+        code: "SERIALIZE_FAILED",
+        file,
+        operation: "appendJsonl",
+        cause: error,
+        message: `Failed to serialize JSONL record for ${file}: ${message}`,
+      });
+    }
+    entry.lines.push(serialized);
     if (entry.lines.length >= this.maxLines) {
       this.flushFile(file);
     }
@@ -367,11 +384,13 @@ export class BufferedStorage {
     const entry = this.buffers.get(file);
     if (!entry || entry.lines.length === 0) return;
     const data = entry.lines.join("\n") + "\n";
+    // Cancel any pending timer so we don't double-flush, but keep the buffer
+    // entry in place until the write actually succeeds. If the write throws,
+    // callers can retry flushFile and the buffered records are still there.
     if (entry.timer) {
       clearTimeout(entry.timer);
       entry.timer = undefined;
     }
-    this.buffers.delete(file);
     try {
       ensureDir(path.dirname(file));
       fs.appendFileSync(file, data, "utf8");
@@ -385,6 +404,8 @@ export class BufferedStorage {
         message: `Failed to append buffered JSONL to ${file}: ${message}`,
       });
     }
+    // Only clear the buffer once the write completed successfully.
+    this.buffers.delete(file);
   }
 
   flushAll(): void {

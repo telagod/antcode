@@ -66,7 +66,7 @@ export function createLocalOps(workDir: string): AllOps {
       }
     },
     grep(pattern: string, cwd: string, opts?: { glob?: string; ignoreCase?: boolean; context?: number; limit?: number }): string {
-      const args = ["grep", "-rn"];
+      const args = ["grep", "-rn", "--exclude-dir=node_modules", "--exclude-dir=.git"];
       if (opts?.ignoreCase) args.push("-i");
       if (opts?.context) args.push(`-C${opts.context}`);
       if (opts?.glob) args.push(`--include=${opts.glob}`);

@@ -1,30 +1,29 @@
 import type { Attempt, FailureMode, MutationEvent, StrategyGenome } from "./types";
+import { getField, setField } from "./mutationOps/fieldAccess";
+import { DEFAULT_MUTATION_RECIPES, type MutationEvidence, type MutationRule } from "./mutationOps/recipes";
 
-export interface MutationEvidence {
-  actual_diff_lines?: number;
-  actual_files_changed?: number;
-  boundary_violations?: string[];
-  notes?: string[];
-}
-
-export interface MutationRule {
-  type: string;
-  field: string;
-  value?: unknown;
-  delta?: number;
-  min?: number;
-  max?: number;
-  search?: string;
-  replace?: string;
-  exclude?: string[];
-}
-
-export interface MutationRecipe {
-  if_failure_mode: FailureMode;
-  mutation_type: string;
-  hypothesis_template: string;
-  rules: MutationRule[];
-}
+// ── Re-exports preserving the public API surface ──
+//
+// Field-access helpers (path traversal with prototype-pollution guards)
+// live in `./mutationOps/fieldAccess`. Mutation-rule data structures and
+// the default failure-mode → mutation recipe table live in
+// `./mutationOps/recipes`. Both are re-exported here so the existing
+// `export * from "./mutationOps"` in `src/index.ts` continues to surface
+// the same symbols as before the split.
+export {
+  getField,
+  setField,
+  tryGetField,
+  trySetField,
+  type GetFieldResult,
+  type SetFieldResult,
+} from "./mutationOps/fieldAccess";
+export {
+  DEFAULT_MUTATION_RECIPES,
+  type MutationEvidence,
+  type MutationRule,
+  type MutationRecipe,
+} from "./mutationOps/recipes";
 
 function extractEvidence(attempts: Attempt[]): MutationEvidence {
   if (!attempts.length) return {};
@@ -33,17 +32,6 @@ function extractEvidence(attempts: Attempt[]): MutationEvidence {
   const violations = attempts.flatMap((a) => a.boundary_violations);
   const notes = attempts.flatMap((a) => a.notes);
   return { actual_diff_lines: maxDiff, actual_files_changed: maxFiles, boundary_violations: violations, notes };
-}
-
-function getField(obj: StrategyGenome, path: string): unknown {
-  return path.split(".").reduce((o: any, k) => (o == null ? undefined : o[k]), obj);
-}
-
-function setField(obj: StrategyGenome, path: string, value: unknown): void {
-  const keys = path.split(".");
-  const last = keys.pop()!;
-  const target = keys.reduce((o: any, k) => o[k], obj);
-  target[last] = value;
 }
 
 function recordChange(
@@ -61,7 +49,7 @@ function executeRule(
   changed: MutationEvent["mutation"]["changed"],
   evidence: MutationEvidence,
 ): boolean {
-  const current = getField(genome, rule.field);
+  const current = getField<unknown>(genome, rule.field);
 
   switch (rule.type) {
     case "set": {
@@ -164,65 +152,6 @@ function executeRule(
   }
 }
 
-// ── Default mutation recipes (extracted from former hard-coded logic) ──
-
-export const DEFAULT_MUTATION_RECIPES: MutationRecipe[] = [
-  {
-    if_failure_mode: "missing_test",
-    mutation_type: "validation_order_change",
-    hypothesis_template: "Patching happened before expected behavior was locked by tests.",
-    rules: [
-      { type: "prepend", field: "validation_strategy.required", value: "write_or_update_targeted_test" },
-      { type: "prepend", field: "validation_strategy.required", value: "run_targeted_test" },
-      { type: "dedupe", field: "validation_strategy.required", exclude: ["targeted_test", "write_or_update_targeted_test", "run_targeted_test"] },
-    ],
-  },
-  {
-    if_failure_mode: "context_underread",
-    mutation_type: "context_expansion",
-    hypothesis_template: "Strategy under-read dependencies (needed ~{files_needed} files).",
-    rules: [
-      { type: "prepend", field: "context_strategy.read_order", value: "critical_dependency_scan" },
-      { type: "use_evidence", field: "context_strategy.max_files", min: 3, max: 14, delta: 2 },
-    ],
-  },
-  {
-    if_failure_mode: "boundary_blocked",
-    mutation_type: "boundary_adaptive_expansion",
-    hypothesis_template: "Boundary too narrow (actual diff={diff}, was max={old_max}).",
-    rules: [
-      { type: "set", field: "boundary_strategy.allowed_file_policy", value: "affected_module_plus_tests_plus_one_hop_dependency" },
-      { type: "use_evidence", field: "boundary_strategy.max_diff_lines", max: 500, delta: 1.2 },
-    ],
-  },
-  {
-    if_failure_mode: "patch_too_broad",
-    mutation_type: "patch_adaptive_reduction",
-    hypothesis_template: "Patch too broad (actual diff={diff}, shrinking).",
-    rules: [
-      { type: "downgrade_enum", field: "action_strategy.patch_granularity", value: ["large", "medium", "small", "tiny"] },
-      { type: "use_evidence", field: "boundary_strategy.max_diff_lines", max: 500, delta: 0.8 },
-      { type: "clamp", field: "boundary_strategy.max_diff_lines", min: 80 },
-    ],
-  },
-  {
-    if_failure_mode: "semantic_miss",
-    mutation_type: "semantic_evidence_tightening",
-    hypothesis_template: "Tests passed without proving goal. Evidence: {notes}",
-    rules: [
-      { type: "push", field: "reward_profile.optimize_for", value: "explicit_goal_evidence" },
-    ],
-  },
-  {
-    if_failure_mode: "reward_hacking",
-    mutation_type: "quarantine",
-    hypothesis_template: "Reward hacking signal detected; preserved only for audit.",
-    rules: [
-      { type: "set", field: "status", value: "quarantined" },
-    ],
-  },
-];
-
 // ── Interpreter ──
 
 export function applyOneMutation(
@@ -253,7 +182,7 @@ export function applyOneMutation(
   let hypothesis = recipe.hypothesis_template;
   hypothesis = hypothesis.replace("{files_needed}", String(evidence.actual_files_changed ?? "?"));
   hypothesis = hypothesis.replace("{diff}", String(evidence.actual_diff_lines ?? "?"));
-  hypothesis = hypothesis.replace("{old_max}", String(getField(child, "boundary_strategy.max_diff_lines") ?? "?"));
+  hypothesis = hypothesis.replace("{old_max}", String(getField<number>(child, "boundary_strategy.max_diff_lines") ?? "?"));
   const weakNotes = (evidence.notes ?? []).filter((n) => n.includes("weak") || n.includes("evidence")).slice(0, 2);
   hypothesis = hypothesis.replace("{notes}", weakNotes.join("; ") || "low semantic score");
 

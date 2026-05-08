@@ -43,8 +43,12 @@ function correlationPath(root: string): string {
 }
 
 function loadCorrelationMatrix(root: string): Map<string, number> {
-  const records = tryReadJson<CorrelationRecord[]>(correlationPath(root), []).value;
-  return new Map(records.map((r) => [r.field, r.reward_correlation]));
+  const result = tryReadJson<CorrelationRecord[]>(correlationPath(root), []);
+  if (!result.found) {
+    // Correlation matrix file doesn't exist yet - this is normal for first-time runs
+    return new Map();
+  }
+  return new Map(result.value.map((r) => [r.field, r.reward_correlation]));
 }
 
 function saveCorrelationMatrix(root: string, matrix: Map<string, number>, samples: Map<string, number>): void {

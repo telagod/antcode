@@ -51,6 +51,8 @@ test("tryReadJsonl falls back when the target file contains malformed JSONL", ()
 
   const result = tryReadJsonl(file, [{ ok: false }]);
 
+  // tryReadJsonl wraps the strict readJsonl: any parse failure surfaces as
+  // PARSE_FAILED, and tryReadJsonl returns the fallback (file still found).
   assert.deepEqual(result, {
     value: [{ ok: false }],
     found: true,

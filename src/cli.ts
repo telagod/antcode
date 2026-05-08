@@ -4,7 +4,6 @@ import {
   Attempt,
   EscalationRequest,
   ExperienceKey,
-  ExperienceKeyHealth,
   MutationEvent,
   NegativePheromone,
   PolicyConfig,
@@ -44,6 +43,7 @@ import { crossover } from "./crossover";
 import { WorkerPool } from "./worker/pool";
 import { startDashboard } from "./tui/dashboard";
 import { assignFocusAreas } from "./collaboration";
+import { showHealth } from "./cli/commands/showHealth";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -753,17 +753,6 @@ function showMutations(): void {
   console.table(rows.map((m) => ({ id: m.id, parent: m.parent_strategy, child: m.child_strategy, trigger: m.triggered_by.failure_mode, status: m.status, type: m.mutation.type })));
 }
 
-function showHealth(): void {
-  const rows = readJsonl<ExperienceKeyHealth>(storage.healthFile);
-  console.table(rows.map((h) => ({
-    experience_key_hash: h.experience_key_hash,
-    sample_count: h.sample_count,
-    transfer_success_rate: h.transfer_success_rate,
-    diagnosis: h.diagnosis.join(", "),
-    action: h.action.join(", "),
-  })));
-}
-
 function showPolicy(): void {
   const genomes = readJsonl<StrategyGenome>(storage.genomesFile);
   const positives = readJsonl<StrategyPheromone>(storage.positiveFile);
@@ -1110,7 +1099,7 @@ async function dispatchCli(parsed: ParsedCliArgs): Promise<void> {
   }
   if (parsed.cmd === "show-genomes") return showGenomes();
   if (parsed.cmd === "show-mutations") return showMutations();
-  if (parsed.cmd === "show-health") return showHealth();
+  if (parsed.cmd === "show-health") return showHealth(storage.healthFile);
   if (parsed.cmd === "show-policy") return showPolicy();
   if (parsed.cmd === "review-attempt") return reviewAttempt(parsed.targetId);
   if (parsed.cmd === "approve-attempt") return approveAttempt(parsed.targetId);

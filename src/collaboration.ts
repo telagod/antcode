@@ -14,6 +14,9 @@ export interface AgentAssignment {
 }
 
 export function assignFocusAreas(concurrency: number): AgentAssignment[] {
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error(`concurrency must be a positive integer, got: ${concurrency}`);
+  }
   const allFiles = fs.readdirSync(PROJECT_SRC)
     .filter((f) => f.endsWith(".ts") && !f.startsWith("index"))
     .map((f) => `src/${f}`);

@@ -46,15 +46,21 @@ test("readJson rejects non-JSON parsed values", () => {
 test("readJsonl rejects non-JSON parsed rows", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "storage-jsonl-non-json-"));
   const file = path.join(dir, "data.jsonl");
-  fs.writeFileSync(file, '{"id":1}\n', "utf8");
+  fs.writeFileSync(file, '{"id":1}\n{"id":2}\n', "utf8");
 
   const originalParse = JSON.parse;
   JSON.parse = () => undefined as never;
 
   try {
+    // readJsonl is strict: any malformed row throws StorageError(PARSE_FAILED).
+    // `tryReadJsonl` is the graceful wrapper that catches this and returns the fallback.
     assert.throws(
-      () => readJsonl(file),
-      (error: unknown) => error instanceof StorageError && error.code === "PARSE_FAILED",
+      () => readJsonl<{ id: number }>(file),
+      (error: unknown) =>
+        error instanceof StorageError &&
+        error.code === "PARSE_FAILED" &&
+        error.operation === "readJsonl" &&
+        error.line === 1,
     );
   } finally {
     JSON.parse = originalParse;

@@ -41,6 +41,7 @@
     "@mariozechner/pi-ai": "^0.70.6",
     "@types/blessed": "^0.1.27",
     "blessed": "^0.1.81",
-    "diff": "^9.0.0"
+    "diff": "^9.0.0",
+    "dotenv": "^17.4.2"
   }
 }
