@@ -20,6 +20,9 @@ export const DEFAULT_WEIGHTS: RewardWeights = {
   test_execution_bonus: 0.08,
   boundary_bonus: 0.05,
   reward_hacking_penalty: 0.55,
+  alignment_bonus: 0.15,
+  drift_penalty: 0.4,
+  drift_threshold: 0.3,
 };
 
 function weightsPath(root: string): string {
@@ -81,5 +84,8 @@ export function clampWeights(w: Partial<RewardWeights>): RewardWeights {
     test_execution_bonus: c(w.test_execution_bonus, 0, 0.5, d.test_execution_bonus),
     boundary_bonus: c(w.boundary_bonus, 0, 0.5, d.boundary_bonus),
     reward_hacking_penalty: c(w.reward_hacking_penalty, 0.1, 1, d.reward_hacking_penalty),
+    alignment_bonus: c(w.alignment_bonus, 0, 0.5, d.alignment_bonus ?? 0.15),
+    drift_penalty: c(w.drift_penalty, 0, 1, d.drift_penalty ?? 0.4),
+    drift_threshold: c(w.drift_threshold, 0, 1, d.drift_threshold ?? 0.3),
   };
 }

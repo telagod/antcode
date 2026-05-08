@@ -2,6 +2,7 @@ import { Attempt, RewardBundle } from "../types";
 import { classifyFailureMode } from "../failureMode";
 import { hashExperienceKey } from "../sampler";
 import { RewardWeights } from "./weights";
+import path from "node:path";
 
 export function detectGuardFlags(attempt: Attempt): string[] {
   const flags: string[] = [];
@@ -14,6 +15,53 @@ export function detectGuardFlags(attempt: Attempt): string[] {
 
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Returns 1 if `file` is a test sidecar of any target file (same basename + .test.ts/.testUtil.ts,
+ * or under tests/ mirroring the source path).
+ */
+function isTestSidecar(file: string): boolean {
+  return /\.test\.tsx?$/.test(file) || /\.testUtil\.tsx?$/.test(file) || file.startsWith("tests/");
+}
+
+function isInSameDir(file: string, targetDirs: Set<string>): boolean {
+  const d = path.dirname(file);
+  return targetDirs.has(d);
+}
+
+/**
+ * Computes how well `files_changed` matches `target_files`.
+ *
+ * Returns:
+ *   alignment   — strict: fraction of edited files that are in target_files (1.0 = perfect)
+ *   containment — lenient: fraction inside target_files OR same-directory OR test sidecar
+ *
+ * Both 0.0 when no files changed (caller should handle as no-edit case separately).
+ */
+export function computeAlignment(filesChanged: string[], targetFiles: string[]): { alignment: number; containment: number } {
+  if (filesChanged.length === 0) return { alignment: 0, containment: 0 };
+  if (targetFiles.length === 0) {
+    // No target — can't measure drift. Treat as fully aligned (don't penalize legacy / mock attempts).
+    return { alignment: 1, containment: 1 };
+  }
+  const targetSet = new Set(targetFiles);
+  const targetDirs = new Set(targetFiles.map((f) => path.dirname(f)));
+
+  let inTarget = 0;
+  let contained = 0;
+  for (const f of filesChanged) {
+    if (targetSet.has(f)) {
+      inTarget += 1;
+      contained += 1;
+    } else if (isInSameDir(f, targetDirs) || isTestSidecar(f)) {
+      contained += 1;
+    }
+  }
+  return {
+    alignment: inTarget / filesChanged.length,
+    containment: contained / filesChanged.length,
+  };
 }
 
 export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): RewardBundle {
@@ -31,6 +79,9 @@ export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): Re
     test_execution_bonus: 0.08,
     boundary_bonus: 0.05,
     reward_hacking_penalty: 0.55,
+    alignment_bonus: 0.15,
+    drift_penalty: 0.4,
+    drift_threshold: 0.3,
   };
 
   const guard_flags = detectGuardFlags(attempt);
@@ -53,6 +104,29 @@ export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): Re
     semantic -= w.reward_hacking_penalty;
     semanticEvidence.push("reward hacking signal detected");
   }
+
+  // Alignment scoring: did the agent edit what the task asked for?
+  const targetFiles = attempt.target_files ?? [];
+  const { alignment, containment } = computeAlignment(attempt.files_changed, targetFiles);
+  const alignmentBonus = w.alignment_bonus ?? 0.15;
+  const driftPenalty = w.drift_penalty ?? 0.4;
+  const driftThreshold = w.drift_threshold ?? 0.3;
+
+  if (attempt.files_changed.length > 0 && targetFiles.length > 0) {
+    semanticEvidence.push(`alignment=${alignment.toFixed(2)} containment=${containment.toFixed(2)}`);
+    if (containment < driftThreshold) {
+      guard_flags.push("goal_drift");
+      semantic -= driftPenalty;
+      semanticEvidence.push(`goal_drift: only ${(containment * 100).toFixed(0)}% of edits within task scope`);
+    } else if (alignment >= 0.99) {
+      semantic += alignmentBonus;
+      semanticEvidence.push("perfect alignment with task target_files");
+    } else if (alignment >= 0.5) {
+      semantic += alignmentBonus * 0.5;
+      semanticEvidence.push("partial alignment with task target_files");
+    }
+  }
+
   semantic = clamp01(semantic);
 
   const partial = {

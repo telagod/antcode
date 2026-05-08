@@ -175,6 +175,8 @@ export async function realAttempt(
         `tokens:in=${result.totalUsage.input_tokens},out=${result.totalUsage.output_tokens},cached=${result.totalUsage.cached_tokens}`,
         ...(result.telemetry ? [formatRuntimeSummary(result.telemetry)] : []),
       ],
+      target_files: task?.target_files ?? [],
+      task_id: task ? task.description.slice(0, 60) : undefined,
     };
 
     return { attempt, mergeFiles, artifact };
@@ -187,7 +189,7 @@ export async function realAttempt(
   }
 }
 
-function fallbackResult(id: string, key: ExperienceKey, genome: StrategyGenome, reason: string): RealAttemptResult {
+function fallbackResult(id: string, key: ExperienceKey, genome: StrategyGenome, reason: string, task?: RealTask): RealAttemptResult {
   return {
     attempt: {
       id, timestamp: new Date().toISOString(), experience_key: key,
@@ -195,6 +197,8 @@ function fallbackResult(id: string, key: ExperienceKey, genome: StrategyGenome, 
       files_changed: [], diff_lines: 0, tests_added: 0,
       commands_run: [], boundary_violations: [],
       notes: [`fallback: ${reason}`],
+      target_files: task?.target_files ?? [],
+      task_id: task ? task.description.slice(0, 60) : undefined,
     },
   };
 }

@@ -75,6 +75,10 @@ export interface Attempt {
   commands_run: string[];
   boundary_violations: string[];
   notes: string[];
+  /** Files the task explicitly asked to modify. Empty for tasks without target_files. */
+  target_files?: string[];
+  /** Task identifier for traceability (matches RealTask key hash or description prefix). */
+  task_id?: string;
 }
 
 export interface PatchArtifactManifest {
@@ -168,6 +172,12 @@ export interface RewardWeights {
   test_execution_bonus: number;
   boundary_bonus: number;
   reward_hacking_penalty: number;
+  /** Bonus added to semantic_confidence when alignment === 1.0 (all edited files in target_files). */
+  alignment_bonus?: number;
+  /** Penalty subtracted from semantic_confidence when containment < drift_threshold. */
+  drift_penalty?: number;
+  /** containment ratio below which we flag goal_drift. Range 0..1. Default 0.3. */
+  drift_threshold?: number;
 }
 
 export interface WeightCalibrationRecord {

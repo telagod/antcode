@@ -421,15 +421,58 @@ async function runExperiment(iterations = 8, useReal = false, autoMerge = true, 
             commands_run: [],
             boundary_violations: [],
             notes: [`worker error: ${(r.reason as Error)?.message ?? r.reason}`],
+            target_files: job.task?.target_files ?? [],
+            task_id: job.task ? job.task.description.slice(0, 60) : undefined,
           };
         }
 
         if (mergeFiles && Object.keys(mergeFiles).length > 0) {
-          try {
-            mergeFilesToProject(mergeFiles);
-            attempt.notes.push("merged to project source");
-          } catch (e) {
-            attempt.notes.push(`merge failed: ${(e as Error).message.slice(0, 80)}`);
+          // Boundary enforcement: only merge files that are in task.target_files,
+          // same directory as a target, or test sidecars. Out-of-scope files are
+          // dropped from the merge set and recorded as boundary violations.
+          const targetFiles = job.task?.target_files ?? [];
+          const allowedFiles: string[] = [];
+          const violations: string[] = [];
+
+          if (targetFiles.length === 0) {
+            // No target — fall back to old behavior (allow everything).
+            allowedFiles.push(...Object.keys(mergeFiles));
+          } else {
+            const targetSet = new Set(targetFiles);
+            const targetDirs = new Set(targetFiles.map((f) => path.dirname(f)));
+            for (const f of Object.keys(mergeFiles)) {
+              const inTarget = targetSet.has(f);
+              const sameDir = targetDirs.has(path.dirname(f));
+              const isSidecar = /\.test\.tsx?$/.test(f) || /\.testUtil\.tsx?$/.test(f) || f.startsWith("tests/");
+              if (inTarget || sameDir || isSidecar) {
+                allowedFiles.push(f);
+              } else {
+                violations.push(f);
+              }
+            }
+          }
+
+          for (const v of violations) {
+            attempt.boundary_violations.push(v);
+            attempt.notes.push(`merge rejected out-of-scope: ${v}`);
+          }
+
+          const filteredMerge: Record<string, string> = {};
+          for (const f of allowedFiles) filteredMerge[f] = mergeFiles[f];
+
+          if (Object.keys(filteredMerge).length > 0) {
+            try {
+              mergeFilesToProject(filteredMerge);
+              if (violations.length === 0) {
+                attempt.notes.push("merged to project source");
+              } else {
+                attempt.notes.push(`merged to project source (${allowedFiles.length} of ${Object.keys(mergeFiles).length} files; ${violations.length} rejected)`);
+              }
+            } catch (e) {
+              attempt.notes.push(`merge failed: ${(e as Error).message.slice(0, 80)}`);
+            }
+          } else if (violations.length > 0) {
+            attempt.notes.push(`merge skipped: all ${violations.length} files out of scope`);
           }
         }
 
