@@ -184,7 +184,13 @@ export function buildRewardBundle(attempt: Attempt, weights?: RewardWeights): Re
 
   const totalTokens = inputTokens + outputTokens;
   const tokenPenalty = totalTokens > 0 ? Math.min(0.15, totalTokens / w.token_penalty_coeff) : 0;
-  const cacheBonus = inputTokens > 0 ? (cachedTokens / inputTokens) * w.cache_bonus_coeff : 0;
+  // cache hit rate as a fraction of *all* tokens served (input+output+cached);
+  // capped so that prompt caching can never dominate the reward formula.
+  // Pre-fix: `cached / input * 0.05` produced bonuses of 900+ for tiny prompts
+  // with large cached prefixes, clamping every reward to 1.0.
+  const totalServed = inputTokens + outputTokens + cachedTokens;
+  const hitRate = totalServed > 0 ? cachedTokens / totalServed : 0;
+  const cacheBonus = Math.min(0.1, hitRate * w.cache_bonus_coeff);
 
   const reward = clamp01(
     successBase + semantic * w.semantic_weight
